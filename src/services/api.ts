@@ -1,6 +1,18 @@
 import axios from 'axios'
 
-const BASE_URL = 'https://localhost:7263'
+// ✅ FIXED — was hardcoded to 'https://localhost:7263', which only exists on
+// your own machine. Now reads from Vite's env system: set VITE_API_BASE_URL
+// in a .env.local file for local dev, and in Vercel's Project Settings →
+// Environment Variables for production. Throwing loudly if it's missing is
+// intentional — a silent fallback to localhost would "work" locally and then
+// fail mysteriously in production, which is worse than failing at build/start.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL
+
+if (!BASE_URL) {
+  throw new Error(
+    'VITE_API_BASE_URL is not set. Add it to .env.local for local dev, or to Vercel → Project Settings → Environment Variables for production.'
+  )
+}
 
 const api = axios.create({
   baseURL: BASE_URL,
