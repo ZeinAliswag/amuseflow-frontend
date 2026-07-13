@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Ticket, Users, ClipboardList,
-  Calendar, LogOut, ChevronDown, Waves, Menu, X,
+  Calendar, LogOut, ChevronDown, Menu, X,
   FerrisWheel, Loader2
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'

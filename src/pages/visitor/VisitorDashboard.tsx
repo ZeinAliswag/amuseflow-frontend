@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import {
-  Ticket, CheckCircle2, Clock, XCircle, Waves,
+  Ticket, CheckCircle2, Clock, XCircle,
   Users, Calendar, ChevronLeft, ChevronRight, ChevronDown,
   Search, MapPin, ZoomIn, X, Loader2, ArrowLeft,
   UserCog, CalendarDays, Bell, AlarmClock,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  CheckCircle2, XCircle, Ticket, Waves,
+  CheckCircle2, XCircle, Ticket, 
   Calendar, Clock, ChevronLeft, ChevronRight,
   Search, Loader2, X, ChevronDown, CalendarDays, Phone,
   FerrisWheel, AlarmClock
@@ -482,24 +482,29 @@ export default function AdminBookingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ✅ FIXED — Status and Payment used to be glued onto the search string
+  // (`[search, statusFilter, payFilter].join(' ')`), which the backend then
+  // matched with a single LIKE '%...%'. That's why "Payment: Paid" was
+  // pulling in "Unpaid" rows too — "Unpaid" contains "Paid" as a substring,
+  // so the LIKE matched both. Status and payment are now sent as their own
+  // query params and matched with exact equality server-side (see
+  // BookingFilterRequest / BookingRepository.GetAllAsync). Date range is
+  // now also sent to the server instead of only being filtered client-side,
+  // so pagination totals stay correct when a range is applied.
   const fetchBookings = async () => {
     setLoading(true)
     try {
-      const q = [params.search, statusFilter, payFilter].filter(Boolean).join(' ')
       const res = await api.get('/api/booking', {
         params: {
           ...params,
-          search: q || undefined,
+          status: statusFilter || undefined,
+          paymentStatus: payFilter || undefined,
           fromDate: dateFrom || undefined,
           toDate: dateTo || undefined,
         }
       })
       const d = res.data?.data?.data ?? res.data?.data ?? res.data ?? []
-      let list: Booking[] = Array.isArray(d) ? d : []
-      // client-side fallback filter in case the API doesn't support fromDate/toDate yet
-      if (dateFrom) list = list.filter(b => (b.scheduleDate ?? '') >= dateFrom)
-      if (dateTo)   list = list.filter(b => (b.scheduleDate ?? '') <= dateTo)
-      setBookings(list)
+      setBookings(Array.isArray(d) ? d : [])
       const pg = res.data?.data?.pagination ?? res.data?.pagination
       if (pg) setPagination(pg)
     } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to load bookings.')) }
