@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Lock, Eye, EyeOff, Sparkles, Shield, Ticket, CreditCard, Phone, Smile, PartyPopper, UserPlus, CheckCircle2, Circle } from 'lucide-react'
+import { User, Lock, Eye, EyeOff, Sparkles, Shield, Ticket, CreditCard, Phone, PartyPopper, UserPlus, CheckCircle2, Circle } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { Spinner } from '../components/shared'

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  Waves, Ticket, Users, Calendar, CheckCircle2,
+ Ticket, Users, Calendar, CheckCircle2,
   XCircle, BarChart3, Clock, TrendingUp, AlertCircle, ChevronLeft, ChevronRight, Loader2,
   FerrisWheel
 } from 'lucide-react'

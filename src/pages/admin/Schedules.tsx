@@ -18,6 +18,19 @@ const fmtTime = (t?: string) => {
   return new Date(`1970-01-01T${t.length === 5 ? t + ':00' : t}`).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
+// ── "Now" helpers for the time-floor feature — local (not UTC) so they
+// line up with form.scheduleDate (built from local Y/M/D in DatePicker's
+// toISO) and with the "HH:mm" values TimePicker emits. Plain functions,
+// not memoized, so every call reflects the live clock. ──
+const todayISO = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const nowHHMM = () => {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 // ✅ UPDATED — now keyed off CALL TIME instead of start time, mirroring the
 // backend's UpdateAsync/DeleteAsync checks in ScheduleService.cs. Once the
 // attendant's call time has passed, the schedule is effectively locked —
@@ -156,7 +169,6 @@ function DayModal({ date, schedules, onClose, onEdit, onDelete}: {
   onDelete: (s: Schedule) => void
 }) {
   const label = date.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-  const dateStr = date.toISOString().split('T')[0]
 
   // ✅ NEW — search bar to filter this day's schedules by ride name.
   const [search, setSearch] = useState('')
@@ -322,13 +334,16 @@ function DayModal({ date, schedules, onClose, onEdit, onDelete}: {
 // ── Time Picker — tactile stepper spinner ────────────────────────
 // Big digits with up/down arrows (and mouse-wheel support) for hour
 // and minute — no lists, no popups, just click/scroll to dial it in.
-function SpinnerDigit({ value, onUp, onDown, label }: {
+function SpinnerDigit({ value, onUp, onDown, label, disableUp, disableDown }: {
   value: string; onUp: () => void; onDown: () => void; label: string
+  disableUp?: boolean; disableDown?: boolean
 }) {
   return (
     <div className="flex flex-col items-center">
-      <button type="button" onClick={onUp} tabIndex={-1}
-        className="w-8 h-5 flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-t-md transition-colors">
+      <button type="button" onClick={onUp} disabled={disableUp} tabIndex={-1}
+        className={`w-8 h-5 flex items-center justify-center rounded-t-md transition-colors ${
+          disableUp ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-emerald-600 hover:bg-emerald-50'
+        }`}>
         <ChevronDown className="w-3.5 h-3.5 rotate-180" />
       </button>
       <div
@@ -337,16 +352,18 @@ function SpinnerDigit({ value, onUp, onDown, label }: {
         title={`Scroll to change ${label}`}>
         {value}
       </div>
-      <button type="button" onClick={onDown} tabIndex={-1}
-        className="w-8 h-5 flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-b-md transition-colors">
+      <button type="button" onClick={onDown} disabled={disableDown} tabIndex={-1}
+        className={`w-8 h-5 flex items-center justify-center rounded-b-md transition-colors ${
+          disableDown ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-emerald-600 hover:bg-emerald-50'
+        }`}>
         <ChevronDown className="w-3.5 h-3.5" />
       </button>
     </div>
   )
 }
 
-function TimePicker({ value, onChange, accent = 'emerald' }: {
-  value: string; onChange: (v: string) => void; accent?: 'emerald' | 'red'
+function TimePicker({ value, onChange, accent = 'emerald', minTime }: {
+  value: string; onChange: (v: string) => void; accent?: 'emerald' | 'red'; minTime?: string
 }) {
   const parse24 = (v: string) => {
     if (!v) return { hour12: 12, minute: 0, period: 'AM' as 'AM'|'PM' }
@@ -367,17 +384,43 @@ function TimePicker({ value, onChange, accent = 'emerald' }: {
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`
   }
 
+  // ── Floor enforcement — when scheduling for today, the caller passes
+  // minTime = the current "HH:mm". Both strings are 24-hour zero-padded,
+  // so plain string comparison tells us if a candidate time is too early. ──
+  const clampToMin = (h12: number, m: number, p: 'AM'|'PM') => {
+    const candidate = to24(h12, m, p)
+    onChange(minTime && candidate < minTime ? minTime : candidate)
+  }
+
+  const atFloor = !!minTime && to24(hour12, minute, period) <= minTime
+
   const bumpHour = (delta: number) => {
+    if (delta < 0 && atFloor) return
     let h = hour12 + delta
     if (h > 12) h = 1
     if (h < 1) h = 12
-    onChange(to24(h, minute, period))
+    clampToMin(h, minute, period)
   }
   const bumpMinute = (delta: number) => {
+    if (delta < 0 && atFloor) return
     let m = minute + delta
     if (m > 59) m = 0
     if (m < 0) m = 59
-    onChange(to24(hour12, m, period))
+    clampToMin(hour12, m, period)
+  }
+
+  // A whole AM/PM half can be entirely in the past today (e.g. it's
+  // 4:32 PM, so AM is off the table) — disable the button instead of
+  // letting it silently snap back to the floor.
+  const periodDisabled = (p: 'AM'|'PM') => {
+    if (!minTime) return false
+    const latestInPeriod = p === 'AM' ? '11:59' : '23:59'
+    return latestInPeriod < minTime
+  }
+
+  const selectPeriod = (p: 'AM'|'PM') => {
+    if (periodDisabled(p)) return
+    clampToMin(hour12, minute, p)
   }
 
   const ring = accent === 'red' ? 'focus-within:ring-red-300' : 'focus-within:ring-emerald-300'
@@ -389,22 +432,28 @@ function TimePicker({ value, onChange, accent = 'emerald' }: {
       <Clock className={`w-4 h-4 flex-shrink-0 ${iconColor}`} />
 
       <SpinnerDigit value={String(hour12).padStart(2,'0')} label="hour"
-        onUp={() => bumpHour(1)} onDown={() => bumpHour(-1)} />
+        onUp={() => bumpHour(1)} onDown={() => bumpHour(-1)} disableDown={atFloor} />
 
       <span className="text-gray-300 font-bold">:</span>
 
       <SpinnerDigit value={String(minute).padStart(2,'0')} label="minute"
-        onUp={() => bumpMinute(1)} onDown={() => bumpMinute(-1)} />
+        onUp={() => bumpMinute(1)} onDown={() => bumpMinute(-1)} disableDown={atFloor} />
 
       <div className="flex flex-col gap-0.5 ml-1">
-        {(['AM','PM'] as const).map(p => (
-          <button key={p} type="button" onClick={() => onChange(to24(hour12, minute, p))}
-            className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
-              period === p ? `${periodActive} text-white` : 'bg-gray-100 text-gray-500 hover:text-gray-700'
-            }`}>
-            {p}
-          </button>
-        ))}
+        {(['AM','PM'] as const).map(p => {
+          const disabled = periodDisabled(p)
+          return (
+            <button key={p} type="button" onClick={() => selectPeriod(p)}
+              disabled={disabled}
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
+                disabled
+                  ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                  : period === p ? `${periodActive} text-white` : 'bg-gray-100 text-gray-500 hover:text-gray-700'
+              }`}>
+              {p}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -600,6 +649,12 @@ export default function AdminSchedulesPage() {
   const [form, setForm]           = useState({ ...emptyForm })
   const [saving, setSaving]       = useState(false)
 
+  // ── Time floor — when the picked schedule date is today, none of the
+  // three time fields may be set earlier than right now. Recomputed every
+  // render so it stays accurate while the modal sits open. ──
+  const scheduleIsToday = form.scheduleDate === todayISO()
+  const minTimeToday = scheduleIsToday ? nowHHMM() : undefined
+
   // confirm modals
   const [confirmSave, setConfirmSave]   = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Schedule | null>(null)
@@ -705,6 +760,14 @@ export default function AdminSchedulesPage() {
     // mirrors the backend's [TimeBefore] data annotation on the schedule DTOs.
     if (!form.callTime)     { toast.error('Call time is required.'); return }
     if (form.callTime >= form.startTime) { toast.error('Call time must be earlier than the start time.'); return }
+    // ── Mirrors the backend's [NotInPast] validation — if the schedule is
+    // for today, none of the three times may already be behind the clock. ──
+    if (form.scheduleDate === todayISO()) {
+      const nowStr = nowHHMM()
+      if (form.callTime < nowStr)  { toast.error(`Call time cannot be earlier than the current time (${fmtTime(nowStr)}).`); return }
+      if (form.startTime < nowStr) { toast.error(`Start time cannot be earlier than the current time (${fmtTime(nowStr)}).`); return }
+      if (form.endTime < nowStr)   { toast.error(`End time cannot be earlier than the current time (${fmtTime(nowStr)}).`); return }
+    }
     if (!form.attendantId)  { toast.error('Please assign an attendant — schedules cannot be Unassigned.'); return }
     if (!form.maxSlots || form.maxSlots < 1) { toast.error('Max slots must be at least 1.'); return }
 
@@ -771,7 +834,6 @@ export default function AdminSchedulesPage() {
     } finally { setDeleteLoading(false) }
   }
 
-  const fmtDate = (d: Date) => d.toISOString().split('T')[0]
   const isToday = (day: number) => {
     return today.getDate() === day && today.getMonth() === calMonth && today.getFullYear() === calYear
   }
@@ -980,9 +1042,14 @@ export default function AdminSchedulesPage() {
                   <AlarmClock className="w-3.5 h-3.5 text-red-500" />
                   Call time <span className="text-red-500">*</span>
                 </label>
-                <TimePicker value={form.callTime} onChange={v => setForm({...form, callTime: v})} accent="red" />
+                <TimePicker value={form.callTime} onChange={v => setForm({...form, callTime: v})} accent="red" minTime={minTimeToday} />
                 <div className="text-[11px] text-gray-400 mt-1">
                   When the attendant must be ready — must be earlier than the start time below.
+                  {scheduleIsToday && (
+                    <span className="block text-amber-600 font-medium mt-0.5">
+                      Scheduling for today — times before {fmtTime(minTimeToday)} are disabled.
+                    </span>
+                  )}
                   {form.callTime && form.startTime && form.callTime >= form.startTime && (
                     <span className="block text-red-500 font-medium mt-0.5">
                       Call time must be earlier than {fmtTime(form.startTime)}.
@@ -994,11 +1061,11 @@ export default function AdminSchedulesPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Start time <span className="text-red-500">*</span></label>
-                  <TimePicker value={form.startTime} onChange={v => setForm({...form, startTime: v})} />
+                  <TimePicker value={form.startTime} onChange={v => setForm({...form, startTime: v})} minTime={minTimeToday} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">End time <span className="text-red-500">*</span></label>
-                  <TimePicker value={form.endTime} onChange={v => setForm({...form, endTime: v})} />
+                  <TimePicker value={form.endTime} onChange={v => setForm({...form, endTime: v})} minTime={minTimeToday} />
                 </div>
               </div>
               <div>

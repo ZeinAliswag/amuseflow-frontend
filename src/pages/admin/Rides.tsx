@@ -2,14 +2,13 @@ import { useEffect, useState, useRef } from 'react'
 import type { FormEvent } from 'react'
 import {
   Plus, Pencil, Trash2, RotateCcw, Upload,
-  Waves, CheckCircle2, Clock, Users, Search,
+  CheckCircle2, Clock, Users, Search,
   ChevronLeft, ChevronRight, ZoomIn, X, Loader2, ChevronDown, Filter,
-  ArrowUpDown, SortAsc, SortDesc, Type, Banknote,
+  SortAsc, SortDesc, Type, Banknote,
   FerrisWheel,
-  Maximize,
   Maximize2
 } from 'lucide-react'
-import type { Ride, PagedResponse, PaginationRequest } from '../../types'
+import type { Ride, PaginationRequest } from '../../types'
 import api, { apiForm } from '../../services/api'
 import toast from 'react-hot-toast'
 

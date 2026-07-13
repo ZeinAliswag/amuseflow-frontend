@@ -3,12 +3,12 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Scan, CheckCircle2, Calendar, Clock, Users, AlertCircle, XCircle,
   Wallet, Loader2, Ticket, ChevronRight, ChevronLeft, ChevronDown, Sparkles, ClipboardCheck,
-  Waves, TrendingUp, X, Bell, ZoomIn, AlarmClock,
+TrendingUp, X, Bell, ZoomIn, AlarmClock,
   FerrisWheel
 } from 'lucide-react'
 import type { Schedule, Booking, PagedResponse, PaginationRequest } from '../../types'
 import api from '../../services/api'
-import { Card, CardHeader, Badge, Table, Td, Pagination, SearchBar, Spinner, EmptyState } from '../../components/shared'
+import {Badge } from '../../components/shared'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 

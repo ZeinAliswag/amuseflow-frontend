@@ -28,8 +28,6 @@ function Avatar({ initials, color }: { initials: string; color: string }) {
 }
 
 // ── Logout Confirm Modal ────────────────────────────────────────────
-// Simple "are you sure" gate before we actually sign the person out — same
-// visual language as the Confirm modals used elsewhere (Cancel booking, etc.)
 function LogoutConfirmModal({ loading, onConfirm, onCancel }: {
   loading: boolean; onConfirm: () => void; onCancel: () => void
 }) {
@@ -63,26 +61,12 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
 
-  // Seed from the (possibly stale/empty) auth-context copy first so the
-  // field isn't blank while the real value loads, then overwrite both once
-  // GET /api/user/me/contact-number resolves below.
   const [initialContactNumber, setInitialContactNumber] = useState(formatPHMobile(user?.contactNumber ?? ''))
   const [contactNumber, setContactNumber] = useState(initialContactNumber)
   const [saving, setSaving] = useState(false)
 
-  // ✅ NEW — if the user already has a contact number on file (not null/empty),
-  // keep the field locked/read-only by default. This stops it from being
-  // silently re-validated (and blocking a password-only save) every time the
-  // form submits, and stops it from being accidentally changed. Tap "Edit" to
-  // unlock and change it on purpose.
   const [contactLocked, setContactLocked] = useState(initialContactNumber.replace(/\D/g, '').length > 0)
 
-  // ✅ NEW — GET /api/user/me/contact-number — used by both the Visitor and
-  // Ride Attendant portals (this modal is shared via PortalHeader). The auth
-  // context's cached user object can be stale or missing the contact number
-  // entirely (that's what caused the field to render with just the gray
-  // placeholder instead of the real saved number). This fetches the current
-  // value straight from the database on open and re-syncs the field/lock state.
   const [loadingContact, setLoadingContact] = useState(true)
   useEffect(() => {
     let cancelled = false
@@ -113,8 +97,6 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   ]
 
   const isChangingPassword = newPassword.length > 0 || confirmPassword.length > 0
-  // Locked (or untouched) contact number never counts as "changing" — this is
-  // what stops the format check from firing on a password-only save.
   const isChangingContact = !contactLocked && contactNumber.replace(/\D/g, '') !== initialContactNumber.replace(/\D/g, '')
   const hasChanges = isChangingPassword || isChangingContact
 
@@ -131,9 +113,6 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
       toast('No changes to save.')
       return
     }
-    // ✅ Only validate the contact number format if it's actually being
-    // changed — an existing/locked/untouched number should never block a
-    // password-only save.
     if (isChangingContact) {
       const contactDigits = contactNumber.replace(/\D/g, '')
       if (!/^09\d{9}$/.test(contactDigits)) {
@@ -149,10 +128,6 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     try {
       const res = await api.put('/api/user/me/password', {
         ...(isChangingPassword ? { newPassword, confirmPassword } : {}),
-        // Always send the number currently shown — unchanged (locked) value
-        // when not editing, or the new value when the admin actually unlocked
-        // and typed one. The backend compares this against the stored value
-        // itself, so sending the untouched original keeps it a no-op there too.
         contactNumber: contactNumber.replace(/\D/g, ''),
       })
       toast.success(res.data?.message ?? 'Updated successfully.')
@@ -249,13 +224,17 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 // deliberately styled/behave the same as Logs.tsx so it reads as the same
 // feature, just scoped to "my activity" (backend auto-scopes non-admins). ──
 
-// Uses the shared ActivityLog type from '../../types' (same one Logs.tsx
-// uses) instead of a local duplicate, now that it declares `role`.
+// ✅ Same fixed module list as the admin Logs page (Logs.tsx's MODULE_OPTS),
+// instead of deriving options from whatever modules happen to appear in the
+// currently-loaded `logs` list. That dynamic approach was the bug: options
+// were computed from the (already filtered) results, so picking "Booking"
+// shrank `logs` down to Booking-only entries, which in turn made "User"
+// vanish from the dropdown itself — filtering one module made every other
+// module look like it no longer existed as a choice.
+const MODULE_OPTS = ['Booking', 'User']
 
 // Matches the palette used on the admin Logs page (Logs.tsx).
 const moduleColor = (m: string) => {
-  if (m === 'Ride')     return { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200' }
-  if (m === 'Schedule') return { bg: 'bg-amber-100',  text: 'text-amber-700',  border: 'border-amber-200' }
   if (m === 'Booking')  return { bg: 'bg-green-100',  text: 'text-green-700',  border: 'border-green-200' }
   if (m === 'User')     return { bg: 'bg-blue-100',   text: 'text-blue-700',   border: 'border-blue-200' }
   return { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' }
@@ -263,8 +242,6 @@ const moduleColor = (m: string) => {
 
 function ModuleIcon({ m, size = 'sm' }: { m: string; size?: 'sm' | 'lg' }) {
   const cls = size === 'lg' ? 'w-5 h-5' : 'w-4 h-4'
-  if (m === 'Ride')     return <FerrisWheel   className={`${cls} text-purple-600`} />
-  if (m === 'Schedule') return <Calendar      className={`${cls} text-amber-600`} />
   if (m === 'Booking')  return <Ticket        className={`${cls} text-green-600`} />
   if (m === 'User')     return <UserCog       className={`${cls} text-blue-600`} />
   return <ClipboardList className={`${cls} text-gray-500`} />
@@ -686,18 +663,21 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
 
   useEffect(() => { fetchLogs() }, [search, moduleFilter, dateFrom, dateTo])
 
+  // Module is sent as its own query param and matched with exact equality
+  // server-side (see ActivityLogFilterRequest.Module) — not folded into the
+  // free-text search.
   const fetchLogs = async () => {
     setLoading(true)
     try {
       // ✅ Real data — same endpoint as the admin Logs page. The backend
       // ignores any role/userId a non-admin sends and forces it to their own
       // account, so this is always "my activity" here.
-      const q = [search, moduleFilter].filter(Boolean).join(' ')
       const res = await api.get('/api/activitylog', {
         params: {
           page: 1,
           pageSize: 30,
-          search: q || undefined,
+          search: search || undefined,
+          module: moduleFilter || undefined,
           fromDate: dateFrom || undefined,
           toDate: dateTo || undefined,
         }
@@ -715,7 +695,6 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
     }
   }
 
-  const moduleOptions = Array.from(new Set(logs.map(l => l.module)))
   const grouped = groupLogsByDate(logs)
 
   return (
@@ -746,7 +725,14 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
               placeholder="Search actions..."
               className="pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-200 w-full bg-gray-50" />
           </div>
-          <ModuleCombobox value={moduleFilter} options={moduleOptions} onChange={setModuleFilter} />
+          {/* ✅ FIXED — now uses the same fixed MODULE_OPTS list as the admin
+              Logs page instead of options derived from the current `logs`
+              result set. Previously, filtering to "Booking" shrank `logs`
+              down to Booking-only rows, and since the dropdown's options were
+              computed from that same shrunken list, "User" disappeared from
+              the dropdown itself the moment you filtered — you couldn't even
+              switch back to it without clearing the filter first. */}
+          <ModuleCombobox value={moduleFilter} options={MODULE_OPTS} onChange={setModuleFilter} />
           <DateRangeButton from={dateFrom} to={dateTo} onClick={() => setDateModalOpen(true)} />
         </div>
 
@@ -836,18 +822,11 @@ function PortalHeader({
   const [showActivity, setShowActivity] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
 
-  // ✅ NEW — logout now goes through a confirm modal instead of firing
-  // immediately on click, so a stray/mis-click doesn't sign the person out.
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
 
   const handleLogout = async () => {
     setLoggingOut(true)
-    // ✅ NEW — consume the actual POST /api/auth/logout response instead of
-    // always showing a hardcoded string, so if the backend ever sends back a
-    // specific message it's reflected in the toast. Still logs the user out
-    // locally and redirects even if the request itself fails — there's no
-    // reason to trap someone in the app just because the network call dropped.
     try {
       const res = await api.post('/api/auth/logout')
       logout()
@@ -931,7 +910,7 @@ function PortalHeader({
                     Change password
                   </button>
 
-                  {/* Sign out — ✅ NEW: opens the confirm modal instead of logging out immediately */}
+                  {/* Sign out */}
                   <button onClick={() => { setShowLogoutConfirm(true); setOpen(false) }}
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-colors border-t border-gray-100">
                     <LogOut className="w-4 h-4 text-red-600" />

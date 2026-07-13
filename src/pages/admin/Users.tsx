@@ -7,8 +7,7 @@ import {
 import type { User, PagedResponse, PaginationRequest } from '../../types'
 import api from '../../services/api'
 import {
-  Card, Modal,
-  Pagination, SearchBar, EmptyState, Spinner
+  Card, Modal, SearchBar
 } from '../../components/shared'
 import toast from 'react-hot-toast'
 

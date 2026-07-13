@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
   ClipboardList, Filter, X, Clock, User, Tag, FileText,
-  Waves, Calendar, Ticket, UserCog, Search, ChevronLeft, ChevronRight, CalendarDays, ChevronDown,
-  FerrisWheel, Shield, HardHat, UserRound, MousePointerClick, Sparkles
+ Calendar, Ticket, UserCog, Search, ChevronLeft, ChevronRight, CalendarDays, ChevronDown,
+  FerrisWheel, Shield, HardHat, UserRound
 } from 'lucide-react'
 import type { ActivityLog, PaginationRequest } from '../../types'
 import api from '../../services/api'
@@ -485,16 +485,24 @@ export default function AdminLogsPage() {
 
   useEffect(() => { fetchLogs() }, [params, moduleFilter, dateFrom, dateTo])
 
+  // ✅ FIXED — moduleFilter used to be glued onto the search string
+  // (`[params.search, moduleFilter].join(' ')`), which the backend matched
+  // with a single LIKE '%...%' across Action/Module/Details/Username. That
+  // meant a module filter could pull in unrelated rows whose Action/Details/
+  // Username text merely contained the module name, and combining a typed
+  // search term with a module filter at the same time broke matching
+  // entirely (no single column contains both substrings glued together).
+  // Module is now sent as its own query param and matched with exact
+  // equality server-side (see ActivityLogFilterRequest.Module).
   const fetchLogs = async () => {
     setLoading(true)
     try {
-      const q = [params.search, moduleFilter].filter(Boolean).join(' ')
       const res = await api.get('/api/activitylog', {
         params: {
           ...params,
-          search: q || undefined,
-          // ✅ NEW — sent as its own param (backend's ActivityLogFilterRequest.Role),
-          // not folded into the free-text search like the module filter is.
+          module: moduleFilter || undefined,
+          // sent as its own param (backend's ActivityLogFilterRequest.Role),
+          // not folded into the free-text search.
           role: roleFilter || undefined,
           fromDate: dateFrom || undefined,
           toDate: dateTo || undefined,
@@ -514,13 +522,7 @@ export default function AdminLogsPage() {
 
   const grouped = groupByDate(logs)
 
-  const todayCount = logs.filter(l => {
-    const d = new Date(l.createdAt)
-    const today = new Date()
-    return d.getFullYear() === today.getFullYear() &&
-      d.getMonth() === today.getMonth() &&
-      d.getDate() === today.getDate()
-  }).length
+
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
