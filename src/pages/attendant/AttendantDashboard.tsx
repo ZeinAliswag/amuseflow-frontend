@@ -1,4 +1,4 @@
-// src/pages/attendant/AttendantDashboard.tsx
+          // src/pages/attendant/AttendantDashboard.tsx
 import { useState, useEffect, useRef } from 'react'
 import {
   Scan, CheckCircle2, Calendar, Clock, Users, AlertCircle, XCircle,
@@ -316,8 +316,16 @@ function RosterModal({ schedule, bookings, loading, onClose, onZoom }: {
 export function AttendantDashboard() {
   const { user } = useAuth()
   const [schedules, setSchedules]   = useState<Schedule[]>([])
-  const [pagination, setPagination] = useState({ currentPage: 1, totalPages: 1, totalCount: 0, pageSize: 10 })
-  const [params, setParams]         = useState<PaginationRequest>({ page: 1, pageSize: 200 })
+  // ✅ FIXED — `pagination` (the read value) was never displayed anywhere on
+  // this page (no pager UI), only `setPagination` is needed to store the
+  // API response's paging info, so the unused half of the tuple is dropped
+  // instead of destructured. Resolves TS6133 without changing any behavior.
+  const [, setPagination] = useState({ currentPage: 1, totalPages: 1, totalCount: 0, pageSize: 10 })
+  // ✅ FIXED — `params` never changes after the initial value (this page
+  // always fetches all 200 assigned schedules in one shot, no pagination
+  // controls), so `setParams` was dead. Dropped the unused setter instead of
+  // destructuring it. Resolves TS6133 without changing any behavior.
+  const [params] = useState<PaginationRequest>({ page: 1, pageSize: 200 })
   const [loading, setLoading]       = useState(true)
   const [code, setCode]             = useState('')
   const [verifiedBooking, setVerifiedBooking] = useState<Booking | null>(null)

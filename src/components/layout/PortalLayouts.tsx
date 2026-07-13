@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   LogOut, ChevronDown, History, KeyRound, X, Loader2,
   Calendar, CheckCircle2, Filter,
-  Circle, Pencil, Lock, FerrisWheel, Ticket, UserCog, ClipboardList,
+  Circle, Pencil, Lock, Ticket, UserCog, ClipboardList,
   Search, ChevronLeft, ChevronRight, CalendarDays, Tag, FileText, User, Clock
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
