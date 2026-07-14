@@ -498,7 +498,7 @@ export function VisitorDashboard() {
       // never show up here for direct visitor booking.
       const filtered = all.filter(s =>
         s.rideId === ride.id &&
-        (s.scheduleType ?? 'Regular') === 'Regular' &&
+        (s.scheduleDate ?? 'Regular') === 'Regular' &&
         s.status === 'Open' &&
         s.availableSlots > 0 &&
         s.scheduleDate >= today
