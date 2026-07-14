@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
  Ticket, Users, Calendar, CheckCircle2,
   XCircle, BarChart3, Clock, TrendingUp, AlertCircle, ChevronLeft, ChevronRight, Loader2,
-  FerrisWheel
+  FerrisWheel, BadgePercent
 } from 'lucide-react'
 import type { AdminDashboard, Booking } from '../../types'
 import { useAuth } from '../../hooks/useAuth'
@@ -355,19 +355,36 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1 text-sm font-medium text-gray-900 mb-1">
-                    <FerrisWheel className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                    <span className="truncate">{b.rideName}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-400">
-                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{b.scheduleDate}</span>
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{b.startTime?.slice(0,5)}</span>
-                  </div>
+                  {b.promoId ? (
+                    <>
+                      <div className="flex items-center gap-1 text-sm font-medium text-gray-900 mb-1">
+                        <BadgePercent className="w-3.5 h-3.5 text-pink-500 flex-shrink-0" />
+                        <span className="truncate">{b.promoName}</span>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-semibold border border-pink-100 flex-shrink-0">
+                          Promo
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-400">
+                        <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{b.includedRides?.[0]?.scheduleDate ?? '—'}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1 text-sm font-medium text-gray-900 mb-1">
+                        <FerrisWheel className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                        <span className="truncate">{b.rideName}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-400">
+                        <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{b.scheduleDate}</span>
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{b.startTime?.slice(0,5)}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
                   {/* Price + payment */}
                   <div className="text-left sm:text-right flex-shrink-0">
-                    <div className="font-bold text-gray-900 text-sm">₱{fmt(b.ridePrice)}</div>
+                    <div className="font-bold text-gray-900 text-sm">₱{fmt(b.promoId ? b.paymentAmount : b.ridePrice)}</div>
                     <Badge label={b.paymentStatus} />
                   </div>
                   {/* Actions */}
@@ -392,7 +409,7 @@ export default function AdminDashboardPage() {
       {approveTarget && (
         <ConfirmModal
           title="Approve booking?"
-          message={`Approve ${approveTarget.visitorName}'s booking for "${approveTarget.rideName}"?`}
+          message={`Approve ${approveTarget.visitorName}'s booking for "${approveTarget.promoId ? approveTarget.promoName : approveTarget.rideName}"?`}
           confirmLabel="Yes, approve"
           onConfirm={doApprove}
           onCancel={() => setApproveTarget(null)}
@@ -404,7 +421,7 @@ export default function AdminDashboardPage() {
       {rejectTarget && (
         <ConfirmModal
           title="Reject booking?"
-          message={`Reject ${rejectTarget.visitorName}'s booking for "${rejectTarget.rideName}"?`}
+          message={`Reject ${rejectTarget.visitorName}'s booking for "${rejectTarget.promoId ? rejectTarget.promoName : rejectTarget.rideName}"?`}
           confirmLabel="Yes, reject"
           danger
           onConfirm={doReject}

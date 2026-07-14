@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Ticket, Users, ClipboardList,
   Calendar, LogOut, ChevronDown, Menu, X,
-  FerrisWheel, Loader2
+  FerrisWheel, Loader2, BadgePercent
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import api from '../../services/api'
@@ -19,6 +19,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/admin',           icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
   { to: '/admin/rides',     icon: <FerrisWheel className="w-5 h-5" />,           label: 'Rides' },
+  { to: '/admin/promos',    icon: <BadgePercent className="w-5 h-5" />,    label: 'Ride Promos' },
   { to: '/admin/schedules', icon: <Calendar className="w-5 h-5" />,        label: 'Schedules' },
   { to: '/admin/bookings',  icon: <Ticket className="w-5 h-5" />,          label: 'Bookings' },
   { to: '/admin/users',     icon: <Users className="w-5 h-5" />,           label: 'Users' },

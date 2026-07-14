@@ -93,6 +93,59 @@ export interface Schedule {
   maxSlots: number
   availableSlots: number
   status: string
+  scheduleType: string  // ✅ NEW — 'Regular' | 'Promo', fully separate pools
+}
+
+// ── Ride Promo ────────────────────────────────────────────────
+// A bundle of 2+ rides sold together with its own price/photo/date window.
+// ✅ CHANGED — each included ride now has a schedule LOCKED IN by the admin
+// at promo-creation time (no more visitor schedule choice at booking time).
+export interface PromoRideItem {
+  rideId: number
+  rideName: string
+  rideDescription?: string
+  rideImagePath?: string
+  ridePrice: number
+  scheduleId: number
+  scheduleDate: string
+  callTime?: string
+  startTime: string
+  endTime: string
+  availableSlots: number
+  maxSlots: number
+  scheduleStatus: string
+}
+
+export interface RidePromo {
+  id: number
+  name: string
+  description?: string
+  price: number
+  imagePath?: string
+  // ✅ CHANGED — single-day promos only. Every ride bundled into this promo
+  // must have its locked schedule on this exact date.
+  promoDate: string
+  // ✅ NEW — "Active" while promoDate hasn't passed yet, "Completed" the
+  // day after. Flips automatically on the backend.
+  status: 'Active' | 'Completed'
+  isDeleted: boolean
+  createdAt: string
+  updatedAt: string
+  rides: PromoRideItem[]
+}
+
+// One included ride within a promo BOOKING — each keeps its own chosen
+// schedule even though the whole thing is a single booking.
+export interface BookingPromoItem {
+  rideId: number
+  rideName: string
+  rideDescription?: string
+  rideImagePath?: string
+  scheduleId: number
+  scheduleDate: string
+  callTime?: string
+  startTime: string
+  endTime: string
 }
 
 // ── Booking ───────────────────────────────────────────────────
@@ -102,14 +155,22 @@ export interface Booking {
   visitorName?: string
   visitorUsername?: string
   visitorContactNumber?: string
-  scheduleId: number
+  scheduleId?: number       // ✅ CHANGED — optional: absent/null for promo bookings
   rideName?: string
+  rideDescription?: string  // ✅ NEW
   ridePrice?: number
   rideImagePath?: string   // ✅ NEW
   scheduleDate?: string
   callTime?: string        // ✅ NEW — from the booking's schedule
   startTime?: string
   endTime?: string
+
+  // ✅ NEW — populated only when this booking is for a Ride Promo
+  promoId?: number
+  promoName?: string
+  promoImagePath?: string
+  includedRides?: BookingPromoItem[]
+
   bookingCode: string
   status: string
   paymentStatus: string

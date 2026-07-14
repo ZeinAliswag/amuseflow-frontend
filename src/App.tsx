@@ -7,6 +7,7 @@ import AdminLayout from './components/layout/AdminLayout'
 import { VisitorLayout, AttendantLayout } from './components/layout/PortalLayouts'
 import AdminDashboardPage from './pages/admin/Dashboard'
 import AdminRidesPage from './pages/admin/Rides'
+import AdminPromosPage from './pages/admin/Promos'
 import AdminSchedulesPage from './pages/admin/Schedules'
 import AdminBookingsPage from './pages/admin/Bookings'
 import AdminUsersPage from './pages/admin/Users'
@@ -54,6 +55,11 @@ function AppRoutes() {
       <Route path="/admin/rides" element={
         <ProtectedRoute roles={['Admin']}>
           <AdminLayout><AdminRidesPage /></AdminLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/admin/promos" element={
+        <ProtectedRoute roles={['Admin']}>
+          <AdminLayout><AdminPromosPage /></AdminLayout>
         </ProtectedRoute>
       } />
       <Route path="/admin/schedules" element={

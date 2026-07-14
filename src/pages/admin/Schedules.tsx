@@ -6,7 +6,21 @@ import api from '../../services/api'
 import toast from 'react-hot-toast'
 
 const emptyForm = {
-  rideId: 0, attendantId: '', scheduleDate: '', callTime: '', startTime: '', endTime: '', maxSlots: 20, status: 'Open'
+  rideId: 0, attendantId: '', scheduleDate: '', callTime: '', startTime: '', endTime: '', maxSlots: 20, status: 'Open',
+  scheduleType: 'Regular', // ✅ NEW — Regular | Promo, fully separate pools
+}
+
+// ✅ NEW — small Regular/Promo tag, pink to match the Ride Promo feature's
+// established brand color elsewhere in the app.
+function ScheduleTypeBadge({ type, className = '' }: { type?: string; className?: string }) {
+  const isPromo = type === 'Promo'
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+      isPromo ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-gray-100 text-gray-600 border-gray-200'
+    } ${className}`}>
+      {isPromo ? 'Promo' : 'Regular'}
+    </span>
+  )
 }
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -16,6 +30,20 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const fmtTime = (t?: string) => {
   if (!t) return '—'
   return new Date(`1970-01-01T${t.length === 5 ? t + ':00' : t}`).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
+// ✅ NEW — adds `mins` minutes to an "HH:MM" string, used to auto-calculate
+// End time from Start time + the selected ride's duration. Flags `wrapped`
+// if the result would roll past midnight (into the next day), since a
+// schedule's start/end must stay on the same ScheduleDate.
+function addMinutes(hhmm: string, mins: number): { time: string; wrapped: boolean } {
+  const [h, m] = hhmm.split(':').map(Number)
+  const total = h * 60 + m + mins
+  const wrapped = total >= 24 * 60 || total < 0
+  const norm = ((total % (24 * 60)) + 24 * 60) % (24 * 60)
+  const hh = Math.floor(norm / 60)
+  const mm = norm % 60
+  return { time: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, wrapped }
 }
 
 // ── "Now" helpers for the time-floor feature — local (not UTC) so they
@@ -105,9 +133,9 @@ function MonthYearPicker({ year, month, onChange, onClose }: {
                 onClick={() => { onChange(viewYear, i); onClose() }}
                 className={`py-2 rounded-xl text-xs font-medium transition-colors ${
                   isSelected
-                    ? 'bg-emerald-600 text-white shadow-sm'
+                    ? 'bg-violet-600 text-white shadow-sm'
                     : isCurrent
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    ? 'bg-violet-50 text-violet-700 border border-violet-200'
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}>
                 {m.slice(0, 3)}
@@ -120,7 +148,7 @@ function MonthYearPicker({ year, month, onChange, onClose }: {
         <div className="px-4 pb-4">
           <button type="button"
             onClick={() => { onChange(today.getFullYear(), today.getMonth()); onClose() }}
-            className="w-full py-2 rounded-xl text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors">
+            className="w-full py-2 rounded-xl text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors">
             Jump to today
           </button>
         </div>
@@ -247,9 +275,12 @@ function DayModal({ date, schedules, onClose, onEdit, onDelete}: {
             <div key={s.id} className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 hover:border-gray-200 transition-colors">
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="font-semibold text-gray-900 text-sm">{s.rideName}</div>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusColor(s.status)}`}>
-                  {s.status}
-                </span>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <ScheduleTypeBadge type={s.scheduleType} />
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusColor(s.status)}`}>
+                    {s.status}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center gap-4 text-xs text-gray-500 mb-1 flex-wrap">
                 <div className="flex items-center gap-1">
@@ -655,6 +686,23 @@ export default function AdminSchedulesPage() {
   const scheduleIsToday = form.scheduleDate === todayISO()
   const minTimeToday = scheduleIsToday ? nowHHMM() : undefined
 
+  // ✅ NEW — End time is auto-calculated from Start time + the selected
+  // ride's own duration (e.g. Fantasy Carousel runs 5 minutes), instead of
+  // admins having to work it out and type it in by hand. Re-runs whenever
+  // the ride or start time changes while the modal is open.
+  const selectedRideDuration = rides.find(r => r.id === Number(form.rideId))
+  const durationWraps = !!(selectedRideDuration && form.startTime &&
+    addMinutes(form.startTime, selectedRideDuration.durationMinutes).wrapped)
+
+  useEffect(() => {
+    if (!modalOpen || !selectedRideDuration || !form.startTime || !selectedRideDuration.durationMinutes) return
+    const { time, wrapped } = addMinutes(form.startTime, selectedRideDuration.durationMinutes)
+    if (!wrapped && form.endTime !== time) {
+      setForm(f => ({ ...f, endTime: time }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalOpen, form.rideId, form.startTime, selectedRideDuration?.durationMinutes])
+
   // confirm modals
   const [confirmSave, setConfirmSave]   = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Schedule | null>(null)
@@ -718,7 +766,7 @@ export default function AdminSchedulesPage() {
 
   const openCreate = (dateStr?: string) => {
     setEditSched(null)
-    setForm({ rideId: 0, attendantId: '', scheduleDate: dateStr ?? '', callTime: '', startTime: '', endTime: '', maxSlots: 20, status: 'Open' })
+    setForm({ rideId: 0, attendantId: '', scheduleDate: dateStr ?? '', callTime: '', startTime: '', endTime: '', maxSlots: 20, status: 'Open', scheduleType: 'Regular' })
     setModalOpen(true)
   }
 
@@ -744,6 +792,7 @@ export default function AdminSchedulesPage() {
       endTime:      s.endTime?.slice(0, 5) ?? '',
       maxSlots:     s.maxSlots,
       status:       s.status ?? 'Open',
+      scheduleType: s.scheduleType ?? 'Regular',
     })
     setDayModal(null)
     setModalOpen(true)
@@ -756,6 +805,23 @@ export default function AdminSchedulesPage() {
     if (!form.startTime)    { toast.error('Start time is required.'); return }
     if (!form.endTime)      { toast.error('End time is required.'); return }
     if (form.startTime >= form.endTime) { toast.error('End time must be after start time.'); return }
+    // ── End time is auto-calculated from the ride's duration, but double
+    // check it actually matches in case start time changed right as the
+    // auto-calc effect was about to run (or wrapped past midnight). ──
+    {
+      const rideForDuration = rides.find(r => r.id === Number(form.rideId))
+      if (rideForDuration?.durationMinutes) {
+        const expected = addMinutes(form.startTime, rideForDuration.durationMinutes)
+        if (expected.wrapped) {
+          toast.error(`${rideForDuration.name} runs ${rideForDuration.durationMinutes} minute(s) — that would push the end time past midnight from this start time. Pick an earlier start time.`)
+          return
+        }
+        if (expected.time !== form.endTime) {
+          toast.error(`${rideForDuration.name} runs exactly ${rideForDuration.durationMinutes} minute(s) — end time must be ${fmtTime(expected.time)}.`)
+          return
+        }
+      }
+    }
     // ── Call time must exist and be strictly earlier than start time —
     // mirrors the backend's [TimeBefore] data annotation on the schedule DTOs.
     if (!form.callTime)     { toast.error('Call time is required.'); return }
@@ -785,6 +851,12 @@ export default function AdminSchedulesPage() {
         toast.error(`Cannot set max slots to ${form.maxSlots} — ${bookedSlots} slot(s) are already booked. Max slots must be at least ${bookedSlots}.`)
         return
       }
+      // ✅ NEW — mirrors the backend: Regular/Promo are fully separate pools,
+      // so flipping the type once anything is booked would orphan it.
+      if (form.scheduleType !== (editSched.scheduleType ?? 'Regular') && bookedSlots > 0) {
+        toast.error(`Cannot change this schedule's type — ${bookedSlots} slot(s) are already booked against it as '${editSched.scheduleType ?? 'Regular'}'.`)
+        return
+      }
     }
 
     setConfirmSave(true)
@@ -801,6 +873,7 @@ export default function AdminSchedulesPage() {
         startTime:   form.startTime.length === 5 ? `${form.startTime}:00` : form.startTime,
         endTime:     form.endTime.length === 5   ? `${form.endTime}:00`   : form.endTime,
         maxSlots:    form.maxSlots,
+        scheduleType: form.scheduleType,
         ...(editSched && { status: form.status }),
       }
       if (editSched) {
@@ -863,7 +936,7 @@ export default function AdminSchedulesPage() {
           <div className="relative">
             <button onClick={() => setPickerOpen(p => !p)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-gray-100 transition-colors">
-              <Calendar className="w-5 h-5 text-blue-500" />
+              <Calendar className="w-5 h-5 text-violet-500" />
               <h2 className="text-base font-bold text-gray-900">{monthName}</h2>
               <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${pickerOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -1019,6 +1092,35 @@ export default function AdminSchedulesPage() {
                   options={rides.map(r => ({ value: String(r.id), label: r.name }))}
                 />
               </div>
+              {/* ✅ NEW — Regular (directly bookable by visitors) vs Promo
+                  (reserved for bundling into a Ride Promo). Fully separate
+                  pools — a schedule can never be both. */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Type <span className="text-red-500">*</span></label>
+                <div className="flex gap-2">
+                  {(['Regular', 'Promo'] as const).map(t => {
+                    const bookedSlots = editSched ? editSched.maxSlots - editSched.availableSlots : 0
+                    const locked = editSched != null && bookedSlots > 0 && (editSched.scheduleType ?? 'Regular') !== t
+                    return (
+                      <button key={t} type="button" disabled={locked}
+                        title={locked ? `Can't change type — ${bookedSlots} slot(s) already booked as '${editSched?.scheduleType ?? 'Regular'}'.` : undefined}
+                        onClick={() => setForm({ ...form, scheduleType: t })}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          form.scheduleType === t
+                            ? t === 'Promo' ? 'bg-pink-600 border-pink-600 text-white' : 'bg-gray-800 border-gray-800 text-white'
+                            : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                        }`}>
+                        {t}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="text-[11px] text-gray-400 mt-1">
+                  {form.scheduleType === 'Promo'
+                    ? "Reserved for bundling into a Ride Promo — won't show up for direct visitor booking."
+                    : "Directly bookable by visitors on this ride's page."}
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Attendant <span className="text-red-500">*</span></label>
                 <SearchableSelect
@@ -1065,7 +1167,20 @@ export default function AdminSchedulesPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">End time <span className="text-red-500">*</span></label>
-                  <TimePicker value={form.endTime} onChange={v => setForm({...form, endTime: v})} minTime={minTimeToday} />
+                  {/* ✅ NEW — visually locked: End time is derived from Start
+                      time + the ride's own duration, not typed in by hand. */}
+                  <div className={selectedRideDuration ? 'pointer-events-none opacity-70' : ''}>
+                    <TimePicker value={form.endTime} onChange={v => setForm({...form, endTime: v})} minTime={minTimeToday} />
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-1">
+                    {selectedRideDuration
+                      ? durationWraps
+                        ? <span className="text-red-500 font-medium">
+                            {selectedRideDuration.name} runs {selectedRideDuration.durationMinutes}m — that would push the end time past midnight. Pick an earlier start time.
+                          </span>
+                        : `Auto-calculated: ${selectedRideDuration.name} runs ${selectedRideDuration.durationMinutes}m from the start time above.`
+                      : 'Select a ride above to auto-calculate this from its duration.'}
+                  </div>
                 </div>
               </div>
               <div>
