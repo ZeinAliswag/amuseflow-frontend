@@ -63,6 +63,7 @@ interface Schedule {
   scheduleDate: string; callTime?: string; startTime: string; endTime: string
   availableSlots: number; maxSlots: number; status: string
   attendantName?: string
+  scheduleType?: string  // ✅ NEW — 'Regular' | 'Promo', fully separate pools
 }
 
 // ── Confirm Modal ──────────────────────────────────────────────
