@@ -13,7 +13,7 @@ import toast from 'react-hot-toast'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-const BASE_URL = 'https://localhost:7263'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 // ✅ NEW — attendants can check people in a bit before the official start
 // time, since people naturally queue up early. Must match

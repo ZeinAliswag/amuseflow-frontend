@@ -12,7 +12,7 @@ import type { Ride, PaginationRequest } from '../../types'
 import api, { apiForm } from '../../services/api'
 import toast from 'react-hot-toast'
 
-const BASE_URL = 'https://localhost:7263'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL
 const fmt = (n: any) => Number(n ?? 0).toFixed(2)
 
 function Spinner() {

@@ -11,7 +11,7 @@ import api, { promoApi, bookingApi } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 
-const BASE_URL = 'https://localhost:7263'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL
 const fmt = (n: any) => Number(n ?? 0).toFixed(2)
 
 function getImageUrl(path?: string) {
