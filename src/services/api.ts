@@ -70,3 +70,34 @@ apiForm.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
+
+// ── Ride Promos (bundle of 2+ rides, own price/photo/date window) ──
+export const promoApi = {
+  getAll: (params: { page?: number; pageSize?: number; search?: string; includeDeleted?: boolean }) =>
+    api.get('/api/ridepromo', { params }),
+
+  getById: (id: number) =>
+    api.get(`/api/ridepromo/${id}`),
+
+  // fd must include: name, description, price, startDate, endDate,
+  // rideIds (appended once per selected ride id), file
+  create: (fd: FormData) =>
+    apiForm.post('/api/ridepromo', fd),
+
+  update: (id: number, fd: FormData) =>
+    apiForm.put(`/api/ridepromo/${id}`, fd),
+
+  delete: (id: number) =>
+    api.delete(`/api/ridepromo/${id}`),
+
+  restore: (id: number) =>
+    api.put(`/api/ridepromo/${id}/restore`),
+}
+
+// ── Promo booking (visitor books a promo as a SINGLE booking) ──
+// ✅ CHANGED — schedules are now locked in by the admin at promo-creation
+// time, so booking a promo only needs the promoId.
+export const bookingApi = {
+  bookPromo: (payload: { promoId: number }) =>
+    api.post('/api/booking/promo', payload),
+}

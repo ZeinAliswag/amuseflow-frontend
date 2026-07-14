@@ -4,10 +4,10 @@ import {
   Users, Calendar, ChevronLeft, ChevronRight, ChevronDown,
   Search, MapPin, ZoomIn, X, Loader2, ArrowLeft,
   UserCog, CalendarDays, Bell, AlarmClock,
-  FerrisWheel
+  FerrisWheel, Tag, PackageCheck
 } from 'lucide-react'
-import type { Booking, Ride, PaginationRequest } from '../../types'
-import api from '../../services/api'
+import type { Booking, Ride, RidePromo, PaginationRequest } from '../../types'
+import api, { promoApi, bookingApi } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 
@@ -80,6 +80,27 @@ function CallTimeBadge({ time, className = '' }: { time?: string; className?: st
   )
 }
 
+
+// ── Rides / Promos toggle — segmented control, same visual language as
+// the StatusCombobox-style filters used elsewhere (Rides.tsx, AttendantDashboard) ──
+function ViewToggle({ value, onChange }: { value: 'rides' | 'promos'; onChange: (v: 'rides' | 'promos') => void }) {
+  return (
+    <div className="inline-flex items-center bg-gray-100 rounded-xl p-1 gap-1">
+      <button type="button" onClick={() => onChange('rides')}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+          value === 'rides' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+        }`}>
+        <FerrisWheel className="w-3.5 h-3.5" /> Rides
+      </button>
+      <button type="button" onClick={() => onChange('promos')}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+          value === 'promos' ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+        }`}>
+        <Tag className="w-3.5 h-3.5" /> Promos
+      </button>
+    </div>
+  )
+}
 
 // ── Month/Year Picker — click-to-open, jump to any month/year ──────
 function MonthYearPicker({ month, year, onChange, accent = 'emerald' }: {
@@ -209,6 +230,10 @@ function Badge({ label }: { label: string }) {
     // ✅ Missed now gets its own color (orange) — it used to share the exact
     // same red as Rejected/Full, making them impossible to tell apart at a glance.
     Full:'bg-red-100 text-red-700', Missed:'bg-orange-100 text-orange-700',
+    // ✅ NEW — a promo's included ride can have slots left even after its
+    // own schedule auto-flips to "Completed" later the same day, so this
+    // reads as "Available" rather than reusing the literal "Open" label.
+    Available:'bg-green-100 text-green-700',
   }
   return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${map[label] ?? 'bg-gray-100 text-gray-600'}`}>{label}</span>
 }
@@ -325,6 +350,17 @@ export function VisitorDashboard() {
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
 
+  // ── Rides vs Promos toggle ──────────────────────────────────
+  const [viewMode, setViewMode] = useState<'rides' | 'promos'>('rides')
+  const [promos, setPromos]       = useState<RidePromo[]>([])
+  const [promoLoading, setPromoLoading] = useState(true)
+
+  // selected promo — schedules are LOCKED IN per ride by the admin already,
+  // so there's no schedule-picking step here, just a direct book button.
+  const [selectedPromo, setSelectedPromo]       = useState<RidePromo | null>(null)
+  const [promoBookTarget, setPromoBookTarget]   = useState<RidePromo | null>(null)
+  const [promoBookingLoading, setPromoBookingLoading] = useState(false)
+
   // selected ride + its schedules
   const [selectedRide, setSelectedRide]   = useState<Ride | null>(null)
   const [schedules, setSchedules]         = useState<Schedule[]>([])
@@ -382,6 +418,58 @@ export function VisitorDashboard() {
 
   useEffect(() => { fetchRides() }, [rideParams])
   useEffect(() => { fetchBookings() }, [bookParams, bookSearch, bookDateFrom, bookDateTo])
+  useEffect(() => { fetchPromos() }, [])
+
+  const fetchPromos = async () => {
+    setPromoLoading(true)
+    try {
+      const res = await promoApi.getAll({ page: 1, pageSize: 50 })
+      const d = (res.data as any)?.data?.data ?? (res.data as any)?.data ?? res.data ?? []
+      const list: RidePromo[] = Array.isArray(d) ? d : []
+      setPromos(list.filter(p => !p.isDeleted))
+    } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to load promos.')) }
+    finally { setPromoLoading(false) }
+  }
+
+  // ✅ CHANGED — a promo can be reserved any time up to and including its
+  // date, not only on the exact day. It's just a reservation — payment
+  // isn't collected until the attendant does so in person, so there's no
+  // reason to block booking ahead of time. Only an already-past promo date
+  // is unavailable (expired).
+  const promoIsAvailable = (promo: RidePromo) => {
+    const today = toISO(new Date())
+    return today <= promo.promoDate.slice(0, 10)
+  }
+
+  // Schedules are already LOCKED IN per ride by the admin (see promo.rides),
+  // so opening a promo's detail view is just a state change — no fetch needed.
+  const openPromo = (promo: RidePromo) => setSelectedPromo(promo)
+
+  // ✅ CHANGED — no longer requires scheduleStatus === 'Open'. The
+  // background worker auto-flips a schedule to "Completed" the moment its
+  // end time passes, even earlier the SAME day as the promo. That's correct
+  // for regular single-ride booking, but a promo is reservable any time up
+  // to and including its whole date (see promoIsAvailable below) — so an
+  // included ride whose window already elapsed today shouldn't block the
+  // promo booking. Only an explicitly Cancelled schedule still blocks it.
+  const promoHasSlots = (promo: RidePromo) =>
+    promo.rides.every(r => r.availableSlots > 0 && r.scheduleStatus !== 'Cancelled')
+
+  const doBookPromo = async () => {
+    if (!promoBookTarget) return
+    setPromoBookingLoading(true)
+    try {
+      await bookingApi.bookPromo({ promoId: promoBookTarget.id })
+      toast.success(`Booked promo "${promoBookTarget.name}"!`)
+      setPromoBookTarget(null)
+      setSelectedPromo(null)
+      fetchBookings()
+      fetchPromos()
+    } catch (e: any) {
+      setPromoBookTarget(null)
+      toast.error(getErrorMessage(e, 'Promo booking failed.'))
+    } finally { setPromoBookingLoading(false) }
+  }
 
   const fetchRides = async () => {
     setLoading(true)
@@ -405,8 +493,12 @@ export function VisitorDashboard() {
       const all: Schedule[] = Array.isArray(d) ? d : []
       // filter by this ride and only Open/upcoming
       const today = new Date().toISOString().split('T')[0]
+      // ✅ NEW — Regular and Promo schedules are fully separate pools. A
+      // Promo-type schedule is reserved for a Ride Promo bundle and must
+      // never show up here for direct visitor booking.
       const filtered = all.filter(s =>
         s.rideId === ride.id &&
+        (s.scheduleType ?? 'Regular') === 'Regular' &&
         s.status === 'Open' &&
         s.availableSlots > 0 &&
         s.scheduleDate >= today
@@ -586,7 +678,7 @@ export function VisitorDashboard() {
 
       {/* Rides or Schedules */}
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-        {!selectedRide ? (
+        {viewMode === 'rides' ? ( !selectedRide ? (
           // ── Rides list ──────────────────────────────────────
           <>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-wrap gap-3">
@@ -597,6 +689,7 @@ export function VisitorDashboard() {
               <p className="text-xs text-gray-500">Click a ride to see available schedules and book.</p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                <ViewToggle value={viewMode} onChange={setViewMode} />
                 <div className="relative w-full sm:w-auto">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
                   <input value={search}
@@ -783,6 +876,158 @@ export function VisitorDashboard() {
               </div>
             )}
           </>
+        )
+        ) : (
+          // ── Promos ──────────────────────────────────────────
+          !selectedPromo ? (
+            <>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-wrap gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                    <Tag className="w-5 h-5 text-pink-500" /> Ride promos
+                  </h3>
+                  <p className="text-xs text-gray-500">Bundle deals — click a promo to pick schedules and book.</p>
+                </div>
+                <ViewToggle value={viewMode} onChange={setViewMode} />
+              </div>
+
+              {promoLoading ? (
+                <div className="flex items-center justify-center h-48">
+                  <div className="w-8 h-8 border-4 border-gray-200 border-t-pink-500 rounded-full animate-spin" />
+                </div>
+              ) : promos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-14 text-gray-400">
+                  <Tag className="w-14 h-14 mb-3 text-gray-200" />
+                  <div className="font-semibold text-gray-500">No promos available</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-5">
+                  {promos.map(promo => {
+                    const available = promoIsAvailable(promo)
+                    return (
+                      <div key={promo.id}
+                        className={`border border-gray-200 rounded-2xl overflow-hidden hover:border-pink-300 hover:shadow-md transition-all group cursor-pointer ${!available ? 'opacity-60' : ''}`}
+                        onClick={() => available && openPromo(promo)}>
+                        <div className="relative h-40 bg-white overflow-hidden"
+                          onClick={e => { e.stopPropagation(); const u = getImageUrl(promo.imagePath); if (u) setZoomSrc(u) }}>
+                          {promo.imagePath ? (
+                            <img src={getImageUrl(promo.imagePath)!} alt={promo.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              onError={e => { (e.target as HTMLImageElement).style.display='none' }} />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-pink-50">
+                              <Tag className="w-10 h-10 text-pink-200" />
+                            </div>
+                          )}
+                          <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-pink-700 font-bold text-xs px-2.5 py-1 rounded-full shadow-sm">
+                            ₱{fmt(promo.price)}
+                          </div>
+                          {!available && (
+                            <div className="absolute top-3 left-3 bg-gray-900/80 text-white text-[10px] font-semibold px-2 py-1 rounded-full">
+                              Expired
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-4">
+                          <h4 className="font-bold text-gray-900 text-base mb-1 truncate">{promo.name}</h4>
+                          <p className="text-xs text-gray-400 line-clamp-2 mb-2 min-h-[2rem]">{promo.description ?? 'No description'}</p>
+                          <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-pink-700 bg-pink-50 border border-pink-100 rounded-lg px-2 py-1 mb-2">
+                            <Calendar className="w-3.5 h-3.5" />
+                            {promo.promoDate.slice(0, 10)}
+                          </div>
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {promo.rides.map(r => (
+                              <span key={r.rideId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-medium border border-pink-100">
+                                <FerrisWheel className="w-3 h-3" /> {r.rideName}
+                              </span>
+                            ))}
+                          </div>
+                          <button disabled={!available}
+                            onClick={e => { e.stopPropagation(); if (available) openPromo(promo) }}
+                            className="w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            <PackageCheck className="w-3.5 h-3.5" /> {available ? 'View details' : 'Unavailable'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="px-5 py-4 border-b border-gray-100">
+                <button onClick={() => setSelectedPromo(null)}
+                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 mb-3 transition-colors">
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back to promos
+                </button>
+                <div className="flex items-start gap-4">
+                  {selectedPromo.imagePath && (
+                    <img src={getImageUrl(selectedPromo.imagePath)!} alt={selectedPromo.name}
+                      className="w-16 h-16 rounded-xl object-cover border border-gray-200 flex-shrink-0" />
+                  )}
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900">{selectedPromo.name}</h3>
+                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{selectedPromo.description}</p>
+                    <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
+                      <span className="flex items-center gap-1 font-semibold text-pink-600"><Calendar className="w-3 h-3" />{selectedPromo.promoDate.slice(0, 10)}</span>
+                      <span className="font-bold text-pink-600">₱{fmt(selectedPromo.price)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Each ride's schedule is already LOCKED IN by the admin —
+                  nothing to pick here, just review and book. */}
+              <div className="p-5 space-y-3">
+                {selectedPromo.rides.map(ride => {
+                  // ✅ CHANGED — matches promoHasSlots: a ride whose window
+                  // already elapsed today (auto-flipped to "Completed") no
+                  // longer counts as "Full" for promo purposes — only no
+                  // slots left or an explicit Cancelled does.
+                  const full = ride.availableSlots <= 0 || ride.scheduleStatus === 'Cancelled'
+                  return (
+                    <div key={ride.rideId} className="border border-gray-200 rounded-xl p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <FerrisWheel className="w-4 h-4 text-pink-500 flex-shrink-0" />
+                            <span className="font-semibold text-gray-900 text-sm truncate">{ride.rideName}</span>
+                          </div>
+                          {ride.rideDescription && (
+                            <p className="text-xs text-gray-400 line-clamp-2 mb-1.5">{ride.rideDescription}</p>
+                          )}
+                          <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {ride.scheduleDate.slice(0, 10)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {fmtTime(ride.startTime)} – {fmtTime(ride.endTime)}
+                            </span>
+                            <CallTimeBadge time={ride.callTime} className="text-[11px]" />
+                          </div>
+                        </div>
+                        <Badge label={full ? 'Full' : 'Available'} />
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-2">
+                        {ride.availableSlots}/{ride.maxSlots} slots left
+                      </div>
+                    </div>
+                  )
+                })}
+
+                <button
+                  onClick={() => setPromoBookTarget(selectedPromo)}
+                  disabled={!promoHasSlots(selectedPromo)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white rounded-xl text-sm font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                  <PackageCheck className="w-4 h-4" />
+                  {promoHasSlots(selectedPromo) ? `Book this promo — ₱${fmt(selectedPromo.price)}` : 'No slots left for this promo'}
+                </button>
+              </div>
+            </>
+          )
         )}
       </div>
 
@@ -827,41 +1072,83 @@ export function VisitorDashboard() {
             <div className="divide-y divide-gray-50">
               {bookings.map(b => (
                 <div key={b.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 hover:bg-gray-50/60 transition-colors group">
-                  <div className="flex items-center gap-3 sm:contents">
-                    <div
-                      className="group/thumb relative w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
-                      onClick={() => { const u = getImageUrl(b.rideImagePath); if (u) setZoomSrc(u) }}>
-                      {b.rideImagePath ? (
-                        <>
-                          <img src={getImageUrl(b.rideImagePath)!} alt={b.rideName}
+                  {b.promoId ? (
+                    // ── Promo booking — ONE booking row covering 2+ rides ──
+                    <div className="flex items-start gap-3 sm:contents">
+                      <div
+                        className="relative w-10 h-10 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
+                        onClick={() => { const u = getImageUrl(b.promoImagePath); if (u) setZoomSrc(u) }}>
+                        {b.promoImagePath ? (
+                          <img src={getImageUrl(b.promoImagePath)!} alt={b.promoName}
                             className="w-full h-full object-cover"
                             onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                          <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover/thumb:opacity-100">
-                            <ZoomIn className="w-4 h-4 text-white" />
-                          </div>
-                        </>
-                      ) : (
-                        <FerrisWheel className="w-5 h-5" />
-                      )}
-                    </div>
-                    <div className="flex-1 sm:flex-1 min-w-0">
-                      <div className="font-semibold text-gray-900 text-sm mb-0.5">{b.rideName}</div>
-                      <div className="font-mono text-xs text-gray-700 bg-gray-200 px-2 py-1 rounded font-semibold inline-block mb-1">
-                        {b.bookingCode}
+                        ) : (
+                          <Tag className="w-5 h-5" />
+                        )}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {b.scheduleDate}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {b.startTime ? `${fmtTime(b.startTime)} – ${fmtTime(b.endTime)}` : '—'}
-                        </span>
-                        <CallTimeBadge time={b.callTime} className="text-[11px]" />
+                      <div className="flex-1 sm:flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="font-semibold text-gray-900 text-sm">{b.promoName}</span>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-semibold border border-pink-100">
+                            <PackageCheck className="w-3 h-3" /> Promo
+                          </span>
+                        </div>
+                        <div className="font-mono text-xs text-gray-700 bg-gray-200 px-2 py-1 rounded font-semibold inline-block mb-1">
+                          {b.bookingCode}
+                        </div>
+                        <div className="space-y-1 mt-1">
+                          {(b.includedRides ?? []).map(r => (
+                            <div key={r.rideId} className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+                              <FerrisWheel className="w-3 h-3 text-pink-400" />
+                              <span className="font-medium text-gray-700">{r.rideName}</span>
+                              <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{r.scheduleDate.slice(0, 10)}</span>
+                              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{fmtTime(r.startTime)} – {fmtTime(r.endTime)}</span>
+                              <CallTimeBadge time={r.callTime} className="text-[11px]" />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-3 sm:contents">
+                      <div
+                        className="group/thumb relative w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
+                        onClick={() => { const u = getImageUrl(b.rideImagePath); if (u) setZoomSrc(u) }}>
+                        {b.rideImagePath ? (
+                          <>
+                            <img src={getImageUrl(b.rideImagePath)!} alt={b.rideName}
+                              className="w-full h-full object-cover"
+                              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                            <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover/thumb:opacity-100">
+                              <ZoomIn className="w-4 h-4 text-white" />
+                            </div>
+                          </>
+                        ) : (
+                          <FerrisWheel className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div className="flex-1 sm:flex-1 min-w-0">
+                        <div className="font-semibold text-gray-900 text-sm mb-0.5">{b.rideName}</div>
+                        {b.rideDescription && (
+                          <div className="text-xs text-gray-400 line-clamp-1 mb-1">{b.rideDescription}</div>
+                        )}
+                        <div className="font-mono text-xs text-gray-700 bg-gray-200 px-2 py-1 rounded font-semibold inline-block mb-1">
+                          {b.bookingCode}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {b.scheduleDate}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {b.startTime ? `${fmtTime(b.startTime)} – ${fmtTime(b.endTime)}` : '—'}
+                          </span>
+                          <CallTimeBadge time={b.callTime} className="text-[11px]" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <Badge label={b.status} />
@@ -916,6 +1203,18 @@ export function VisitorDashboard() {
           onConfirm={doBook}
           onCancel={() => setBookTarget(null)}
           loading={bookingLoading}
+        />
+      )}
+
+      {/* Confirm Book Promo */}
+      {promoBookTarget && (
+        <ConfirmModal
+          title="Book this promo?"
+          message={`Book "${promoBookTarget.name}" covering ${promoBookTarget.rides.length} rides as one booking? Price: ₱${fmt(promoBookTarget.price)}`}
+          confirmLabel="Yes, book now"
+          onConfirm={doBookPromo}
+          onCancel={() => setPromoBookTarget(null)}
+          loading={promoBookingLoading}
         />
       )}
 

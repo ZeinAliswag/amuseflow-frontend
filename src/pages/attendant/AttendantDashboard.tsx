@@ -1,10 +1,9 @@
-          // src/pages/attendant/AttendantDashboard.tsx
 import { useState, useEffect, useRef } from 'react'
 import {
   Scan, CheckCircle2, Calendar, Clock, Users, AlertCircle, XCircle,
   Wallet, Loader2, Ticket, ChevronRight, ChevronLeft, ChevronDown, Sparkles, ClipboardCheck,
 TrendingUp, X, Bell, ZoomIn, AlarmClock,
-  FerrisWheel
+  FerrisWheel, Tag
 } from 'lucide-react'
 import type { Schedule, Booking, PagedResponse, PaginationRequest } from '../../types'
 import api from '../../services/api'
@@ -97,6 +96,19 @@ function CallTimeBadge({ time, className = '' }: { time?: string; className?: st
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 font-semibold shadow-sm ${className}`}>
       <AlarmClock className="w-3.5 h-3.5" />
       Call time: {fmtTime(time)}
+    </span>
+  )
+}
+
+// ✅ NEW — Regular/Promo tag, pink to match the Ride Promo feature's
+// established brand color elsewhere in the app.
+function ScheduleTypeBadge({ type, className = '' }: { type?: string; className?: string }) {
+  const isPromo = type === 'Promo'
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+      isPromo ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-gray-100 text-gray-600 border-gray-200'
+    } ${className}`}>
+      {isPromo ? 'Promo' : 'Regular'}
     </span>
   )
 }
@@ -216,7 +228,10 @@ function RosterModal({ schedule, bookings, loading, onClose, onZoom }: {
           <div className="flex items-center gap-3 min-w-0">
             <RideThumb path={ridePhoto} name={schedule.rideName} size="w-10 h-10" iconSize="w-4 h-4" bg="bg-amber-50" onZoom={onZoom} />
             <div className="min-w-0">
-              <div className="font-bold text-gray-900 text-sm truncate">{schedule.rideName}</div>
+              <div className="flex items-center gap-1.5">
+                <div className="font-bold text-gray-900 text-sm truncate">{schedule.rideName}</div>
+                <ScheduleTypeBadge type={schedule.scheduleType} />
+              </div>
               <div className="text-xs text-gray-400">
                 {schedule.scheduleDate} · {fmtTime(schedule.startTime)}–{fmtTime(schedule.endTime)}
               </div>
@@ -254,10 +269,15 @@ function RosterModal({ schedule, bookings, loading, onClose, onZoom }: {
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-gray-900 text-sm truncate">{b.visitorName}</div>
                           <div className="text-[10px] text-gray-400 truncate">@{b.visitorUsername}</div>
-                          <div className="mt-0.5">
+                          <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono text-[10px] text-gray-500">
                               {maskCode(b.bookingCode)}
                             </span>
+                            {b.promoId && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-pink-100 text-pink-700 text-[9px] font-semibold">
+                                <Tag className="w-2.5 h-2.5" /> {b.promoName ?? 'Promo'}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -398,7 +418,10 @@ export function AttendantDashboard() {
     setCollectingPayment(true)
     try {
       await api.put(`/api/booking/${verifiedBooking.bookingCode}/pay`)
-      toast.success(`Payment of ₱${verifiedBooking.ridePrice?.toFixed(2)} collected.`)
+      // ✅ FIXED — was `ridePrice`, which is undefined for promo bookings
+      // (promos don't have a single ride price). `paymentAmount` is always
+      // populated for both booking types and holds the actual amount due.
+      toast.success(`Payment of ₱${verifiedBooking.paymentAmount?.toFixed(2)} collected.`)
       const res = await api.get<{ data: Booking }>(`/api/booking/code/${verifiedBooking.bookingCode}`)
       setVerifiedBooking(res.data.data)
     } catch (e: any) {
@@ -439,19 +462,21 @@ export function AttendantDashboard() {
   // ── Check-in window: payment can only be collected — and the ride only
   // completed — while "now" falls inside [checkInOpensAt, endTime] for the
   // schedule date. Mirrors the backend's ValidateScheduleWindow check.
-  // checkInOpensAt = startTime minus CHECK_IN_GRACE_MINUTES, so attendants
-  // can check people in a little early instead of waiting for the exact
-  // start time. Too early = still outside the grace window. Too late =
-  // past endTime, the window already closed.
+  // ✅ CHANGED — checkInOpensAt is now the schedule's CallTime when one is
+  // set (that's the whole point of a call time), falling back to startTime
+  // minus CHECK_IN_GRACE_MINUTES only when there's no call time. Too early =
+  // still outside the window. Too late = past endTime, the window closed.
   const scheduleStart = verifiedBooking?.scheduleDate && verifiedBooking?.startTime
     ? new Date(`${verifiedBooking.scheduleDate}T${verifiedBooking.startTime}`)
     : null
   const scheduleEnd = verifiedBooking?.scheduleDate && verifiedBooking?.endTime
     ? new Date(`${verifiedBooking.scheduleDate}T${verifiedBooking.endTime}`)
     : null
-  const checkInOpensAt = scheduleStart
-    ? new Date(scheduleStart.getTime() - CHECK_IN_GRACE_MINUTES * 60_000)
-    : null
+  const checkInOpensAt = verifiedBooking?.scheduleDate && verifiedBooking?.callTime
+    ? new Date(`${verifiedBooking.scheduleDate}T${verifiedBooking.callTime}`)
+    : scheduleStart
+      ? new Date(scheduleStart.getTime() - CHECK_IN_GRACE_MINUTES * 60_000)
+      : null
   const nowTime = new Date()
   const isBeforeWindow = !!checkInOpensAt && nowTime < checkInOpensAt
   const isAfterWindow  = !!scheduleEnd && nowTime > scheduleEnd
@@ -579,7 +604,9 @@ export function AttendantDashboard() {
                   ? 'bg-amber-50 border-amber-200'
                   : 'bg-red-50 border-red-200'}`}>
                 <div className="flex items-center gap-3 mb-3">
-                  <RideThumb path={verifiedBooking.rideImagePath} name={verifiedBooking.rideName}
+                  <RideThumb
+                    path={verifiedBooking.promoId ? verifiedBooking.promoImagePath : verifiedBooking.rideImagePath}
+                    name={verifiedBooking.promoId ? verifiedBooking.promoName : verifiedBooking.rideName}
                     size="w-11 h-11" iconSize="w-5 h-5" bg="bg-white shadow-sm" onZoom={setZoomSrc} />
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 text-sm truncate">{verifiedBooking.visitorName}</p>
@@ -591,32 +618,76 @@ export function AttendantDashboard() {
                   </div>
                 </div>
 
-                <div className="font-mono text-xs text-gray-600 bg-white/70 px-2 py-1 rounded-lg inline-block mb-3 font-semibold">
-                  {verifiedBooking.bookingCode}
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="font-mono text-xs text-gray-600 bg-white/70 px-2 py-1 rounded-lg inline-block font-semibold">
+                    {verifiedBooking.bookingCode}
+                  </div>
+                  {verifiedBooking.promoId && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-pink-100 text-pink-700 text-[11px] font-semibold">
+                      <Tag className="w-3 h-3" /> Promo: {verifiedBooking.promoName}
+                    </span>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                  <div className="bg-white/70 rounded-xl p-2.5">
-                    <p className="text-gray-500 mb-0.5">Ride</p>
-                    <p className="font-medium text-gray-900">{verifiedBooking.rideName}</p>
+                {verifiedBooking.promoId ? (
+                  // ── Promo booking — one entry per ride included, each with
+                  // its own schedule and description (Ride Attendant view). ──
+                  <div className="space-y-2 mb-3">
+                    {(verifiedBooking.includedRides ?? []).map(r => (
+                      <div key={r.rideId} className="bg-white/70 rounded-xl p-2.5 text-xs">
+                        <p className="font-semibold text-gray-900">{r.rideName}</p>
+                        {r.rideDescription && (
+                          <p className="text-gray-500 mt-0.5 line-clamp-2">{r.rideDescription}</p>
+                        )}
+                        <div className="flex items-center gap-2 flex-wrap mt-1">
+                          <p className="text-gray-600">
+                            {r.scheduleDate} {fmtTime(r.startTime)} – {fmtTime(r.endTime)}
+                          </p>
+                          {r.callTime && (
+                            <span className="flex items-center gap-1 text-amber-600 font-medium">
+                              <AlarmClock className="w-3 h-3" /> Call {fmtTime(r.callTime)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="bg-white/70 rounded-xl p-2.5 text-xs flex items-center justify-between">
+                      <span className="text-gray-500">Promo price</span>
+                      <span className="font-bold text-gray-900">₱{verifiedBooking.paymentAmount?.toFixed(2)}</span>
+                    </div>
                   </div>
-                  <div className="bg-white/70 rounded-xl p-2.5">
-                    <p className="text-gray-500 mb-0.5">Schedule</p>
-                    <p className="font-medium text-gray-900">
-                      {verifiedBooking.scheduleDate} {fmtTime(verifiedBooking.startTime)} – {fmtTime(verifiedBooking.endTime)}
-                    </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                    <div className="bg-white/70 rounded-xl p-2.5">
+                      <p className="text-gray-500 mb-0.5">Ride</p>
+                      <p className="font-medium text-gray-900">{verifiedBooking.rideName}</p>
+                      {verifiedBooking.rideDescription && (
+                        <p className="text-gray-500 mt-1 line-clamp-2">{verifiedBooking.rideDescription}</p>
+                      )}
+                    </div>
+                    <div className="bg-white/70 rounded-xl p-2.5">
+                      <p className="text-gray-500 mb-0.5">Schedule</p>
+                      <p className="font-medium text-gray-900">
+                        {verifiedBooking.scheduleDate} {fmtTime(verifiedBooking.startTime)} – {fmtTime(verifiedBooking.endTime)}
+                      </p>
+                      {verifiedBooking.callTime && (
+                        <p className="flex items-center gap-1 text-amber-600 font-medium mt-1">
+                          <AlarmClock className="w-3 h-3" /> Call {fmtTime(verifiedBooking.callTime)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="bg-white/70 rounded-xl p-2.5">
+                      <p className="text-gray-500 mb-0.5">Ride price</p>
+                      <p className="font-bold text-gray-900">₱{verifiedBooking.ridePrice?.toFixed(2)}</p>
+                    </div>
+                    <div className="bg-white/70 rounded-xl p-2.5">
+                      <p className="text-gray-500 mb-0.5">Payment</p>
+                      <p className={`font-semibold ${verifiedBooking.paymentStatus === 'Paid' ? 'text-green-700' : 'text-amber-700'}`}>
+                        {verifiedBooking.paymentStatus}
+                      </p>
+                    </div>
                   </div>
-                  <div className="bg-white/70 rounded-xl p-2.5">
-                    <p className="text-gray-500 mb-0.5">Ride price</p>
-                    <p className="font-bold text-gray-900">₱{verifiedBooking.ridePrice?.toFixed(2)}</p>
-                  </div>
-                  <div className="bg-white/70 rounded-xl p-2.5">
-                    <p className="text-gray-500 mb-0.5">Payment</p>
-                    <p className={`font-semibold ${verifiedBooking.paymentStatus === 'Paid' ? 'text-green-700' : 'text-amber-700'}`}>
-                      {verifiedBooking.paymentStatus}
-                    </p>
-                  </div>
-                </div>
+                )}
 
                 {/* schedule-window warnings — mirrors backend's ValidateScheduleWindow.
                     Two distinct messages: too early (before checkInOpensAt, i.e.
@@ -625,7 +696,11 @@ export function AttendantDashboard() {
                   <div className="flex items-center gap-2 bg-white/70 border border-red-200 rounded-xl p-2.5 text-xs text-red-800 mb-2.5">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
                     {new Date().toDateString() === checkInOpensAt.toDateString()
-                      ? `Check-in opens at ${checkInOpensAt.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} today (${CHECK_IN_GRACE_MINUTES} min before the ${scheduleStart.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} start time).`
+                      ? `Check-in opens at ${checkInOpensAt.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} today (${
+                          verifiedBooking?.callTime
+                            ? `the ${checkInOpensAt.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} call time`
+                            : `${CHECK_IN_GRACE_MINUTES} min before the ${scheduleStart.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} start time`
+                        }).`
                       : `This ride is scheduled for ${scheduleStart.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })} — check-in isn't open yet.`}
                   </div>
                 )}
@@ -641,7 +716,9 @@ export function AttendantDashboard() {
                   <div className="space-y-2.5">
                     <div className="flex items-center gap-2 bg-white/70 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-800">
                       <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      Payment not yet collected. Collect ₱{verifiedBooking.ridePrice?.toFixed(2)} before completing the ride.
+                      {/* ✅ FIXED — was `ridePrice` (undefined for promo bookings),
+                          now `paymentAmount` which is always populated. */}
+                      Payment not yet collected. Collect ₱{verifiedBooking.paymentAmount?.toFixed(2)} before completing the ride.
                     </div>
                     <button onClick={handleCollectPayment} disabled={collectingPayment || !isScheduleDue}
                       title={!isScheduleDue ? 'Outside the check-in window for this schedule.' : undefined}
@@ -650,7 +727,7 @@ export function AttendantDashboard() {
                       {collectingPayment
                         ? <Loader2 className="w-4 h-4 animate-spin" />
                         : <Wallet className="w-4 h-4" />}
-                      Collect payment (₱{verifiedBooking.ridePrice?.toFixed(2)})
+                      Collect payment (₱{verifiedBooking.paymentAmount?.toFixed(2)})
                     </button>
                   </div>
                 )}
@@ -753,7 +830,10 @@ export function AttendantDashboard() {
                     className="px-5 py-3.5 flex items-center gap-3 hover:bg-gray-50/60 transition-colors group cursor-pointer">
                     <RideThumb path={s.rideImagePath} name={s.rideName} onZoom={setZoomSrc} />
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm truncate">{s.rideName}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-semibold text-gray-900 text-sm truncate">{s.rideName}</p>
+                        <ScheduleTypeBadge type={s.scheduleType} />
+                      </div>
                       <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5 flex-wrap">
                         <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{s.scheduleDate}</span>
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{fmtTime(s.startTime)}–{fmtTime(s.endTime)}</span>
