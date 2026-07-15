@@ -145,7 +145,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
             <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
               <KeyRound className="w-5 h-5 text-gray-600" />
             </div>
-            <div className="font-bold text-gray-900 text-[14px]">Change password</div>
+            <div className="font-bold text-gray-900 text-[14px]">Change credentials</div>
           </div>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
             <X className="w-4 h-4" />
@@ -907,7 +907,7 @@ function PortalHeader({
                     <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center">
                       <KeyRound className="w-3.5 h-3.5 text-gray-600" />
                     </div>
-                    Change password
+                    Change credentials
                   </button>
 
                   {/* Sign out */}
