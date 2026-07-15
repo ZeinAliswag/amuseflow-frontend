@@ -100,16 +100,17 @@ function PromoDatePicker({ value, onChange }: { value: string; onChange: (date: 
 
   const handlePick = (d: number) => {
     const iso = dateISO(d)
-    if (iso < todayISO) return
+    if (iso <= todayISO) return
     onChange(iso)
     setOpen(false)
   }
 
+  // ✅ CHANGED — today itself is no longer a valid promo date, so this
+  // button just jumps the calendar view to the current month instead of
+  // selecting today's date.
   const gotoToday = () => {
     const t = new Date()
     setViewMonth(t.getMonth()); setViewYear(t.getFullYear())
-    onChange(todayISO)
-    setOpen(false)
   }
 
   return (
@@ -147,9 +148,10 @@ function PromoDatePicker({ value, onChange }: { value: string; onChange: (date: 
               {cells.map((d, i) => {
                 if (d === null) return <div key={`empty-${i}`} />
                 const iso = dateISO(d)
-                const isPast = iso < todayISO
+                // ✅ CHANGED — today is also disabled now, not just earlier
+                // dates. Promos must be created for a future date only.
+                const isPast = iso <= todayISO
                 const isSelected = iso === value
-                const isToday = iso === todayISO
                 return (
                   <div key={iso} className="flex items-center justify-center">
                     <button type="button" disabled={isPast} onClick={() => handlePick(d)}
@@ -158,8 +160,6 @@ function PromoDatePicker({ value, onChange }: { value: string; onChange: (date: 
                           ? 'bg-emerald-600 text-white font-bold shadow-sm'
                           : isPast
                           ? 'text-gray-300 cursor-not-allowed'
-                          : isToday
-                          ? 'border border-emerald-400 text-emerald-700 font-semibold hover:bg-emerald-50'
                           : 'text-gray-700 hover:bg-emerald-50'
                       }`}>
                       {d}

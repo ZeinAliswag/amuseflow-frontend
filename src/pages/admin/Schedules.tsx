@@ -1107,7 +1107,7 @@ export default function AdminSchedulesPage() {
                         onClick={() => setForm({ ...form, scheduleType: t })}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                           form.scheduleType === t
-                            ? t === 'Promo' ? 'bg-pink-600 border-pink-600 text-white' : 'bg-gray-800 border-gray-800 text-white'
+                            ? t === 'Promo' ? 'bg-rose-500 border-rose-500 text-white' : 'bg-teal-600 border-teal-600 text-white'
                             : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
                         }`}>
                         {t}
