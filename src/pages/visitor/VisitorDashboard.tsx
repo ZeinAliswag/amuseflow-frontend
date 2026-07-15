@@ -427,19 +427,20 @@ export function VisitorDashboard() {
       const res = await promoApi.getAll({ page: 1, pageSize: 50 })
       const d = (res.data as any)?.data?.data ?? (res.data as any)?.data ?? res.data ?? []
       const list: RidePromo[] = Array.isArray(d) ? d : []
-      setPromos(list.filter(p => !p.isDeleted))
+      // ✅ CHANGED — only show promos that are still bookable (strictly
+      // future date). Expired ones (today or earlier) are hidden entirely
+      // instead of showing as a grayed-out "Unavailable" card.
+      setPromos(list.filter(p => !p.isDeleted && promoIsAvailable(p)))
     } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to load promos.')) }
     finally { setPromoLoading(false) }
   }
 
-  // ✅ CHANGED — a promo can be reserved any time up to and including its
-  // date, not only on the exact day. It's just a reservation — payment
-  // isn't collected until the attendant does so in person, so there's no
-  // reason to block booking ahead of time. Only an already-past promo date
-  // is unavailable (expired).
+  // ✅ CHANGED — a promo is only bookable while its date is strictly in the
+  // future. Today's date (and anything earlier) now counts as expired, so
+  // it no longer shows up in the list at all (see fetchPromos above).
   const promoIsAvailable = (promo: RidePromo) => {
     const today = toISO(new Date())
-    return today <= promo.promoDate.slice(0, 10)
+    return today < promo.promoDate.slice(0, 10)
   }
 
   // Schedules are already LOCKED IN per ride by the admin (see promo.rides),
@@ -1156,7 +1157,14 @@ export function VisitorDashboard() {
                       <Badge label={b.paymentStatus} />
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className="font-bold text-gray-900 text-sm">₱{fmt(b.ridePrice)}</div>
+                      {/* ✅ FIXED — regular bookings: paymentAmount stays 0
+                          until an attendant actually collects it, so the
+                          ride's fixed price (ridePrice) is the "actual
+                          price" to show. Promo bookings have no separate
+                          price field, but their paymentAmount IS set to the
+                          promo price at booking time, so it's still correct
+                          there — hence the fallback. */}
+                      <div className="font-bold text-gray-900 text-sm">₱{fmt(b.ridePrice ?? b.paymentAmount)}</div>
                       {/* ✅ FIXED — was dumping the raw ISO string (e.g.
                           "2026-07-11T00:23:58.0933333") straight into the DOM.
                           Now shows date + 12-hour time together via fmtDateTime. */}
