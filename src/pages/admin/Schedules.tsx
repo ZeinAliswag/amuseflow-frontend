@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import type { FormEvent } from 'react'
 import { Plus, Pencil, Calendar, Clock, Users, CheckCircle2, Trash2, Loader2, X, ChevronDown, Search, ChevronRight, ChevronLeft, UserCog, AlarmClock } from 'lucide-react'
 import type { Schedule, Ride, User } from '../../types'
@@ -8,6 +8,28 @@ import toast from 'react-hot-toast'
 const emptyForm = {
   rideId: 0, attendantId: '', scheduleDate: '', callTime: '', startTime: '', endTime: '', maxSlots: 20, status: 'Open',
   scheduleType: 'Regular', // ✅ NEW — Regular | Promo, fully separate pools
+  // ✅ NEW — bulk date-range creation. 'single' behaves exactly as before;
+  // 'range' creates one schedule per day between rangeStart/rangeEnd
+  // (inclusive), each using the same ride/type/times/slots, but the
+  // attendant can either be the same for every day or picked per day.
+  dateMode: 'single' as 'single' | 'range',
+  rangeStart: '', rangeEnd: '',
+  attendantMode: 'same' as 'same' | 'different',
+  rangeAttendants: {} as Record<string, string>,
+}
+
+// ✅ NEW — every ISO date from start to end, inclusive. Used by date-range
+// bulk schedule creation.
+function datesInRange(startISO: string, endISO: string): string[] {
+  const out: string[] = []
+  if (!startISO || !endISO) return out
+  const d = new Date(startISO + 'T00:00:00')
+  const end = new Date(endISO + 'T00:00:00')
+  while (d <= end) {
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+    d.setDate(d.getDate() + 1)
+  }
+  return out
 }
 
 // ✅ NEW — small Regular/Promo tag, pink to match the Ride Promo feature's
@@ -505,11 +527,42 @@ function DatePicker({ value, onChange }: {
   const [viewMonth, setViewMonth] = useState(initial.getMonth())
   const [viewYear, setViewYear] = useState(initial.getFullYear())
 
+  // ✅ FIXED — this field can sit inside the modal's two-column date-range
+  // grid (Start date / End date). An `absolute` dropdown anchored to that
+  // narrow column's left edge overflowed past the modal's own right edge
+  // and rendered on top of whatever was behind the modal. Same fix as
+  // PromoDatePicker in Promos.tsx: fixed positioning computed from the
+  // trigger button's own on-screen position escapes the parent's bounds
+  // (and its overflow-y-auto scroll box) entirely, and is clamped to stay
+  // on-screen instead of bleeding off the right edge of the viewport.
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const [coords, setCoords] = useState({ top: 0, left: 0 })
+  const POPUP_WIDTH = 288 // w-72
+
   const openPicker = () => {
     const d = value ? new Date(value + 'T00:00:00') : today
     setViewMonth(d.getMonth()); setViewYear(d.getFullYear())
+    const rect = btnRef.current?.getBoundingClientRect()
+    if (rect) {
+      let left = rect.left
+      if (left + POPUP_WIDTH > window.innerWidth - 8) left = window.innerWidth - 8 - POPUP_WIDTH
+      setCoords({ top: rect.bottom + 4, left: Math.max(8, left) })
+    }
     setOpen(true)
   }
+
+  // Close instead of drifting out of alignment if the modal scrolls or the
+  // window resizes while the panel is open.
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
 
   const toISO = (y: number, m: number, d: number) =>
     `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
@@ -539,7 +592,7 @@ function DatePicker({ value, onChange }: {
 
   return (
     <div className="relative">
-      <button type="button" onClick={openPicker}
+      <button ref={btnRef} type="button" onClick={() => (open ? setOpen(false) : openPicker())}
         className={`w-full flex items-center justify-between px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white text-left focus:outline-none focus:ring-2 focus:ring-emerald-300 ${
           value ? 'text-gray-900' : 'text-gray-400'
         }`}>
@@ -549,8 +602,9 @@ function DatePicker({ value, onChange }: {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute z-40 mt-1 left-0 w-72 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div className="fixed z-[70] w-72 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden"
+            style={{ top: coords.top, left: coords.left }}>
             {/* Month navigator */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <button type="button" onClick={() => shiftMonth(-1)}
@@ -766,9 +820,15 @@ export default function AdminSchedulesPage() {
 
   const openCreate = (dateStr?: string) => {
     setEditSched(null)
-    setForm({ rideId: 0, attendantId: '', scheduleDate: dateStr ?? '', callTime: '', startTime: '', endTime: '', maxSlots: 20, status: 'Open', scheduleType: 'Regular' })
+    setForm({ ...emptyForm, scheduleDate: dateStr ?? '' })
     setModalOpen(true)
   }
+
+  // ✅ NEW — every date the range currently spans, or [] if the range isn't
+  // fully picked yet / is backwards.
+  const rangeDates = form.dateMode === 'range' && form.rangeStart && form.rangeEnd && form.rangeStart <= form.rangeEnd
+    ? datesInRange(form.rangeStart, form.rangeEnd)
+    : []
 
   const openEdit = (s: Schedule) => {
     if (s.status === 'Completed') {
@@ -784,6 +844,7 @@ export default function AdminSchedulesPage() {
     }
     setEditSched(s)
     setForm({
+      ...emptyForm,
       rideId:       s.rideId,
       attendantId:  String(s.attendantId ?? ''),
       scheduleDate: s.scheduleDate,
@@ -801,6 +862,60 @@ export default function AdminSchedulesPage() {
   const handleSubmitClick = (e: FormEvent) => {
     e.preventDefault()
     if (!form.rideId)       { toast.error('Please select a ride.'); return }
+
+    // ── Date-range mode (create-only): validate the range + times/slots
+    // shared by every day, plus the attendant assignment(s), then hand off
+    // to the same confirm dialog. Per-day creation happens in doSave. ──
+    if (!editSched && form.dateMode === 'range') {
+      if (!form.rangeStart || !form.rangeEnd) { toast.error('Pick both a start and end date for the range.'); return }
+      if (form.rangeStart > form.rangeEnd)     { toast.error('Range end date must be on or after the start date.'); return }
+      if (form.rangeStart < todayISO())        { toast.error('Range start date cannot be in the past.'); return }
+      if (!form.startTime) { toast.error('Start time is required.'); return }
+      if (!form.endTime)   { toast.error('End time is required.'); return }
+      if (form.startTime >= form.endTime) { toast.error('End time must be after start time.'); return }
+      {
+        const rideForDuration = rides.find(r => r.id === Number(form.rideId))
+        if (rideForDuration?.durationMinutes) {
+          const expected = addMinutes(form.startTime, rideForDuration.durationMinutes)
+          if (expected.wrapped) {
+            toast.error(`${rideForDuration.name} runs ${rideForDuration.durationMinutes} minute(s) — that would push the end time past midnight from this start time. Pick an earlier start time.`)
+            return
+          }
+          if (expected.time !== form.endTime) {
+            toast.error(`${rideForDuration.name} runs exactly ${rideForDuration.durationMinutes} minute(s) — end time must be ${fmtTime(expected.time)}.`)
+            return
+          }
+        }
+      }
+      if (!form.callTime) { toast.error('Call time is required.'); return }
+      if (form.callTime >= form.startTime) { toast.error('Call time must be earlier than the start time.'); return }
+      // If the range happens to start today, the shared times still can't
+      // be behind the clock — same rule as single-date mode.
+      if (rangeDates.includes(todayISO())) {
+        const nowStr = nowHHMM()
+        if (form.callTime < nowStr)  { toast.error(`Call time cannot be earlier than the current time (${fmtTime(nowStr)}).`); return }
+        if (form.startTime < nowStr) { toast.error(`Start time cannot be earlier than the current time (${fmtTime(nowStr)}).`); return }
+        if (form.endTime < nowStr)   { toast.error(`End time cannot be earlier than the current time (${fmtTime(nowStr)}).`); return }
+      }
+      if (!form.maxSlots || form.maxSlots < 1) { toast.error('Max slots must be at least 1.'); return }
+      const selectedRideForRange = rides.find(r => r.id === Number(form.rideId))
+      if (selectedRideForRange && form.maxSlots > selectedRideForRange.maxCapacity) {
+        toast.error(`Max slots (${form.maxSlots}) cannot exceed "${selectedRideForRange.name}"'s capacity (${selectedRideForRange.maxCapacity}).`)
+        return
+      }
+      if (form.attendantMode === 'same') {
+        if (!form.attendantId) { toast.error('Please assign an attendant — schedules cannot be Unassigned.'); return }
+      } else {
+        const missing = rangeDates.filter(d => !form.rangeAttendants[d])
+        if (missing.length > 0) {
+          toast.error(`Please assign an attendant for every date in the range (missing ${missing.length}).`)
+          return
+        }
+      }
+      setConfirmSave(true)
+      return
+    }
+
     if (!form.scheduleDate) { toast.error('Schedule date is required.'); return }
     if (!form.startTime)    { toast.error('Start time is required.'); return }
     if (!form.endTime)      { toast.error('End time is required.'); return }
@@ -862,8 +977,54 @@ export default function AdminSchedulesPage() {
     setConfirmSave(true)
   }
 
+  // Pulls the backend's actual validation message out of an error response,
+  // same extraction logic used by the single-schedule save below.
+  const extractErrMsg = (e: any, fallback: string) => {
+    const data = e.response?.data
+    const validationMsg = data?.errors ? Object.values(data.errors)[0] : null
+    return data?.message ?? (Array.isArray(validationMsg) ? validationMsg[0] : null) ?? fallback
+  }
+
   const doSave = async () => {
     setSaving(true)
+
+    // ── Date-range mode: one POST per day in the range, sequentially so a
+    // conflict on one day (e.g. the attendant already has something else
+    // booked that slot) doesn't abort the rest of the batch. ──
+    if (!editSched && form.dateMode === 'range') {
+      let ok = 0
+      const failures: string[] = []
+      for (const date of rangeDates) {
+        const attendantForDay = form.attendantMode === 'same' ? form.attendantId : form.rangeAttendants[date]
+        const payload = {
+          rideId:      Number(form.rideId),
+          attendantId: attendantForDay ? Number(attendantForDay) : null,
+          scheduleDate: date,
+          callTime:    form.callTime.length === 5 ? `${form.callTime}:00` : form.callTime,
+          startTime:   form.startTime.length === 5 ? `${form.startTime}:00` : form.startTime,
+          endTime:     form.endTime.length === 5   ? `${form.endTime}:00`   : form.endTime,
+          maxSlots:    form.maxSlots,
+          scheduleType: form.scheduleType,
+        }
+        try {
+          await api.post('/api/schedule', payload)
+          ok++
+        } catch (e: any) {
+          failures.push(`${date}: ${extractErrMsg(e, 'failed')}`)
+        }
+      }
+      setConfirmSave(false); setModalOpen(false); fetchSchedules()
+      if (failures.length === 0) {
+        toast.success(`Created ${ok} schedule${ok === 1 ? '' : 's'} across the date range.`)
+      } else if (ok === 0) {
+        toast.error(`All ${failures.length} schedule(s) failed to create. First issue: ${failures[0]}`)
+      } else {
+        toast.error(`Created ${ok}, but ${failures.length} failed. First issue: ${failures[0]}`)
+      }
+      setSaving(false)
+      return
+    }
+
     try {
       const payload = {
         rideId:      Number(form.rideId),
@@ -888,10 +1049,7 @@ export default function AdminSchedulesPage() {
       setConfirmSave(false)
       // Surfaces the backend's [TimeBefore] validation message too, in case
       // the client-side check above ever drifts from the server-side rule.
-      const data = e.response?.data
-      const validationMsg = data?.errors ? Object.values(data.errors)[0] : null
-      const msg = data?.message ?? (Array.isArray(validationMsg) ? validationMsg[0] : null) ?? 'Failed to save.'
-      toast.error(msg)
+      toast.error(extractErrMsg(e, 'Failed to save.'))
     } finally { setSaving(false) }
   }
 
@@ -1121,22 +1279,128 @@ export default function AdminSchedulesPage() {
                     : "Directly bookable by visitors on this ride's page."}
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Attendant <span className="text-red-500">*</span></label>
-                <SearchableSelect
-                  value={form.attendantId}
-                  onChange={v => setForm({...form, attendantId: v})}
-                  placeholder="Select an attendant..."
-                  options={[
-                    { value: '', label: 'Unassigned' },
-                    ...attendants.map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}` }))
-                  ]}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Schedule date <span className="text-red-500">*</span></label>
-                <DatePicker value={form.scheduleDate} onChange={v => setForm({...form, scheduleDate: v})} />
-              </div>
+              {/* ✅ NEW — Single date (as before) vs a whole date range,
+                  bulk-creating one schedule per day. Create-only — editing
+                  always targets one existing schedule. */}
+              {!editSched && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Schedule for</label>
+                  <div className="flex gap-2">
+                    {([['single', 'Single date'], ['range', 'Date range']] as const).map(([m, label]) => (
+                      <button key={m} type="button"
+                        onClick={() => setForm({ ...form, dateMode: m })}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                          form.dateMode === m
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                        }`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-1">
+                    {form.dateMode === 'range'
+                      ? 'Creates one schedule per day in the range, using the same ride/times/slots below.'
+                      : 'Creates a single schedule on one date.'}
+                  </div>
+                </div>
+              )}
+
+              {(editSched || form.dateMode === 'single') ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Attendant <span className="text-red-500">*</span></label>
+                    <SearchableSelect
+                      value={form.attendantId}
+                      onChange={v => setForm({...form, attendantId: v})}
+                      placeholder="Select an attendant..."
+                      options={[
+                        { value: '', label: 'Unassigned' },
+                        ...attendants.map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}` }))
+                      ]}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Schedule date <span className="text-red-500">*</span></label>
+                    <DatePicker value={form.scheduleDate} onChange={v => setForm({...form, scheduleDate: v})} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Start date <span className="text-red-500">*</span></label>
+                      <DatePicker value={form.rangeStart} onChange={v => setForm({...form, rangeStart: v})} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">End date <span className="text-red-500">*</span></label>
+                      <DatePicker value={form.rangeEnd} onChange={v => setForm({...form, rangeEnd: v})} />
+                    </div>
+                  </div>
+                  {form.rangeStart && form.rangeEnd && form.rangeStart > form.rangeEnd && (
+                    <div className="text-[11px] text-red-500 font-medium -mt-2">End date must be on or after the start date.</div>
+                  )}
+                  {rangeDates.length > 0 && (
+                    <div className="text-[11px] text-gray-400 -mt-2">{rangeDates.length} day(s) selected.</div>
+                  )}
+
+                  {/* ✅ NEW — one attendant for the whole range, or pick a
+                      different attendant per day. */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Attendant assignment <span className="text-red-500">*</span></label>
+                    <div className="flex gap-2 mb-2">
+                      {([['same', 'One attendant for all'], ['different', 'Different per date']] as const).map(([m, label]) => (
+                        <button key={m} type="button"
+                          onClick={() => setForm({ ...form, attendantMode: m })}
+                          className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+                            form.attendantMode === m
+                              ? 'bg-sky-600 border-sky-600 text-white'
+                              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                          }`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {form.attendantMode === 'same' ? (
+                      <SearchableSelect
+                        value={form.attendantId}
+                        onChange={v => setForm({...form, attendantId: v})}
+                        placeholder="Select an attendant..."
+                        options={[
+                          { value: '', label: 'Unassigned' },
+                          ...attendants.map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}` }))
+                        ]}
+                      />
+                    ) : rangeDates.length === 0 ? (
+                      <div className="text-[11px] text-gray-400 border border-dashed border-gray-200 rounded-xl p-3 text-center">
+                        Pick a start and end date above to assign an attendant per day.
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                        {rangeDates.map(d => (
+                          <div key={d} className="flex items-center gap-2">
+                            <div className="w-24 flex-shrink-0 text-xs font-medium text-gray-600">
+                              {new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                            </div>
+                            <div className="flex-1">
+                              <SearchableSelect
+                                value={form.rangeAttendants[d] ?? ''}
+                                onChange={v => setForm({...form, rangeAttendants: { ...form.rangeAttendants, [d]: v }})}
+                                placeholder="Select an attendant..."
+                                options={[
+                                  { value: '', label: 'Unassigned' },
+                                  ...attendants.map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}` }))
+                                ]}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
               {/* ✅ NEW — Call time: must be strictly earlier than Start time. */}
               <div>
@@ -1220,7 +1484,7 @@ export default function AdminSchedulesPage() {
                 <button type="submit" disabled={saving}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                  {editSched ? 'Save changes' : 'Create schedule'}
+                  {editSched ? 'Save changes' : !editSched && form.dateMode === 'range' && rangeDates.length > 0 ? `Create ${rangeDates.length} schedule${rangeDates.length === 1 ? '' : 's'}` : 'Create schedule'}
                 </button>
               </div>
             </form>
@@ -1231,8 +1495,12 @@ export default function AdminSchedulesPage() {
       {/* Confirm Save */}
       {confirmSave && (
         <ConfirmModal
-          title={editSched ? 'Save changes?' : 'Create schedule?'}
-          message={`${editSched ? 'Update' : 'Create'} schedule for ${rides.find(r => r.id === Number(form.rideId))?.name ?? 'this ride'} on ${form.scheduleDate}?`}
+          title={editSched ? 'Save changes?' : form.dateMode === 'range' ? `Create ${rangeDates.length} schedules?` : 'Create schedule?'}
+          message={
+            !editSched && form.dateMode === 'range'
+              ? `Create ${rangeDates.length} schedule(s) for ${rides.find(r => r.id === Number(form.rideId))?.name ?? 'this ride'}, one per day from ${form.rangeStart} to ${form.rangeEnd}?`
+              : `${editSched ? 'Update' : 'Create'} schedule for ${rides.find(r => r.id === Number(form.rideId))?.name ?? 'this ride'} on ${form.scheduleDate}?`
+          }
           confirmLabel={editSched ? 'Yes, save' : 'Yes, create'}
           onConfirm={doSave}
           onCancel={() => setConfirmSave(false)}

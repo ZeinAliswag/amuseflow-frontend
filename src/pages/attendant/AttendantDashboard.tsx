@@ -15,11 +15,6 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
 
-// ✅ NEW — attendants can check people in a bit before the official start
-// time, since people naturally queue up early. Must match
-// CheckInGraceMinutesBeforeStart in BookingService.cs on the backend.
-const CHECK_IN_GRACE_MINUTES = 15
-
 function getImageUrl(path?: string) {
   if (!path) return null
   if (path.startsWith('http')) return path
@@ -418,10 +413,11 @@ export function AttendantDashboard() {
     setCollectingPayment(true)
     try {
       await api.put(`/api/booking/${verifiedBooking.bookingCode}/pay`)
-      // ✅ FIXED — was `ridePrice`, which is undefined for promo bookings
-      // (promos don't have a single ride price). `paymentAmount` is always
-      // populated for both booking types and holds the actual amount due.
-      toast.success(`Payment of ₱${verifiedBooking.paymentAmount?.toFixed(2)} collected.`)
+      // Regular bookings: paymentAmount stays 0 until this PUT succeeds, so the
+      // real amount due lives in ridePrice. Promo bookings have no ridePrice
+      // (a promo bundles multiple rides), but paymentAmount is set at booking
+      // time. Fall back accordingly, same as the rest of this screen.
+      toast.success(`Payment of ₱${(verifiedBooking.ridePrice ?? verifiedBooking.paymentAmount)?.toFixed(2)} collected.`)
       const res = await api.get<{ data: Booking }>(`/api/booking/code/${verifiedBooking.bookingCode}`)
       setVerifiedBooking(res.data.data)
     } catch (e: any) {
@@ -462,21 +458,44 @@ export function AttendantDashboard() {
   // ── Check-in window: payment can only be collected — and the ride only
   // completed — while "now" falls inside [checkInOpensAt, endTime] for the
   // schedule date. Mirrors the backend's ValidateScheduleWindow check.
-  // ✅ CHANGED — checkInOpensAt is now the schedule's CallTime when one is
-  // set (that's the whole point of a call time), falling back to startTime
-  // minus CHECK_IN_GRACE_MINUTES only when there's no call time. Too early =
-  // still outside the window. Too late = past endTime, the window closed.
-  const scheduleStart = verifiedBooking?.scheduleDate && verifiedBooking?.startTime
+  // ✅ SIMPLIFIED — CallTime is required on every schedule now, so
+  // checkInOpensAt is always the schedule's CallTime; the old grace-period
+  // fallback (for schedules with no call time) can no longer happen and has
+  // been removed, matching BookingService.cs's ValidateScheduleWindow.
+  // ✅ FIXED — promo bookings have no top-level scheduleDate/startTime/
+  // endTime/callTime (a promo bundles several rides, each with its own
+  // schedule under includedRides), so all four of these used to come back
+  // null for every promo booking. That made isBeforeWindow/isAfterWindow
+  // always false and isScheduleDue always true, so payment collection and
+  // "mark completed" were available on any date, regardless of the promo's
+  // actual schedule. Now, for promo bookings, the window opens at the
+  // earliest call time across included rides and closes after the latest
+  // ride's end time.
+  const includedRides = verifiedBooking?.includedRides ?? []
+  const scheduleStart = verifiedBooking?.promoId
+    ? includedRides.reduce<Date | null>((min, r) => {
+        const d = new Date(`${r.scheduleDate}T${r.startTime}`)
+        return !min || d < min ? d : min
+      }, null)
+    : verifiedBooking?.scheduleDate && verifiedBooking?.startTime
     ? new Date(`${verifiedBooking.scheduleDate}T${verifiedBooking.startTime}`)
     : null
-  const scheduleEnd = verifiedBooking?.scheduleDate && verifiedBooking?.endTime
+  const scheduleEnd = verifiedBooking?.promoId
+    ? includedRides.reduce<Date | null>((max, r) => {
+        const d = new Date(`${r.scheduleDate}T${r.endTime}`)
+        return !max || d > max ? d : max
+      }, null)
+    : verifiedBooking?.scheduleDate && verifiedBooking?.endTime
     ? new Date(`${verifiedBooking.scheduleDate}T${verifiedBooking.endTime}`)
     : null
-  const checkInOpensAt = verifiedBooking?.scheduleDate && verifiedBooking?.callTime
+  const checkInOpensAt = verifiedBooking?.promoId
+    ? includedRides.reduce<Date | null>((min, r) => {
+        const d = new Date(`${r.scheduleDate}T${r.callTime ?? r.startTime}`)
+        return !min || d < min ? d : min
+      }, null) ?? scheduleStart
+    : verifiedBooking?.scheduleDate && verifiedBooking?.callTime
     ? new Date(`${verifiedBooking.scheduleDate}T${verifiedBooking.callTime}`)
     : scheduleStart
-      ? new Date(scheduleStart.getTime() - CHECK_IN_GRACE_MINUTES * 60_000)
-      : null
   const nowTime = new Date()
   const isBeforeWindow = !!checkInOpensAt && nowTime < checkInOpensAt
   const isAfterWindow  = !!scheduleEnd && nowTime > scheduleEnd
@@ -602,6 +621,8 @@ export function AttendantDashboard() {
                   ? 'bg-green-50 border-green-200'
                   : isApprovedAndUnpaid
                   ? 'bg-amber-50 border-amber-200'
+                  : verifiedBooking.status === 'Completed'
+                  ? 'bg-blue-50 border-blue-200'
                   : 'bg-red-50 border-red-200'}`}>
                 <div className="flex items-center gap-3 mb-3">
                   <RideThumb
@@ -691,16 +712,12 @@ export function AttendantDashboard() {
 
                 {/* schedule-window warnings — mirrors backend's ValidateScheduleWindow.
                     Two distinct messages: too early (before checkInOpensAt, i.e.
-                    startTime minus the grace period) vs too late (after endTime). */}
+                    the call time) vs too late (after endTime). */}
                 {(isApprovedAndUnpaid || isApprovedAndPaid) && isBeforeWindow && checkInOpensAt && scheduleStart && (
                   <div className="flex items-center gap-2 bg-white/70 border border-red-200 rounded-xl p-2.5 text-xs text-red-800 mb-2.5">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
                     {new Date().toDateString() === checkInOpensAt.toDateString()
-                      ? `Check-in opens at ${checkInOpensAt.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} today (${
-                          verifiedBooking?.callTime
-                            ? `the ${checkInOpensAt.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} call time`
-                            : `${CHECK_IN_GRACE_MINUTES} min before the ${scheduleStart.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} start time`
-                        }).`
+                      ? `Check-in opens at ${checkInOpensAt.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} today (the call time).`
                       : `This ride is scheduled for ${scheduleStart.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })} — check-in isn't open yet.`}
                   </div>
                 )}
@@ -716,9 +733,7 @@ export function AttendantDashboard() {
                   <div className="space-y-2.5">
                     <div className="flex items-center gap-2 bg-white/70 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-800">
                       <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      {/* ✅ FIXED — was `ridePrice` (undefined for promo bookings),
-                          now `paymentAmount` which is always populated. */}
-                      Payment not yet collected. Collect ₱{verifiedBooking.paymentAmount?.toFixed(2)} before completing the ride.
+                      Payment not yet collected. Collect ₱{(verifiedBooking.ridePrice ?? verifiedBooking.paymentAmount)?.toFixed(2)} before completing the ride.
                     </div>
                     <button onClick={handleCollectPayment} disabled={collectingPayment || !isScheduleDue}
                       title={!isScheduleDue ? 'Outside the check-in window for this schedule.' : undefined}
@@ -727,7 +742,7 @@ export function AttendantDashboard() {
                       {collectingPayment
                         ? <Loader2 className="w-4 h-4 animate-spin" />
                         : <Wallet className="w-4 h-4" />}
-                      Collect payment (₱{verifiedBooking.paymentAmount?.toFixed(2)})
+                      Collect payment (₱{(verifiedBooking.ridePrice ?? verifiedBooking.paymentAmount)?.toFixed(2)})
                     </button>
                   </div>
                 )}
@@ -744,7 +759,13 @@ export function AttendantDashboard() {
                   </button>
                 )}
 
-                {verifiedBooking.status !== 'Approved' && (
+                {verifiedBooking.status === 'Completed' && (
+                  <div className="flex items-center justify-center gap-2 py-2.5 bg-blue-100 text-blue-700 rounded-xl text-sm font-semibold">
+                    <CheckCircle2 className="w-4 h-4" /> Ride already completed
+                  </div>
+                )}
+
+                {verifiedBooking.status !== 'Approved' && verifiedBooking.status !== 'Completed' && (
                   <div className="flex items-center justify-center gap-2 py-2.5 bg-red-100 text-red-700 rounded-xl text-sm font-semibold">
                     <XCircle className="w-4 h-4" /> Deny entry — booking not approved
                   </div>
