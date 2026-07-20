@@ -430,7 +430,7 @@ export function AttendantDashboard() {
     setCompleting(true)
     try {
       await api.put(`/api/booking/${verifiedBooking.bookingCode}/complete`)
-      toast.success('Ride marked as completed!')
+      toast.success('Ride completed — payment already confirmed!')
       setVerifiedBooking(null)
       setCode('')
       fetchSchedules()
