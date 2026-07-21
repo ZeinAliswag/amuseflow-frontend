@@ -373,7 +373,15 @@ export function AttendantDashboard() {
     } catch { return new Set() }
   }
 
-  useEffect(() => { fetchSchedules() }, [params])
+  // ✅ FIXED — same gap as VisitorDashboard: this only ran once on mount/
+  // filter-change, so the bell badge (unseen assigned-schedule count) went
+  // stale the moment the attendant landed on the dashboard. Now re-polls
+  // every 30s so a newly-assigned schedule shows up live, not just at login.
+  useEffect(() => {
+    fetchSchedules()
+    const interval = setInterval(fetchSchedules, 10_000)
+    return () => clearInterval(interval)
+  }, [params])
 
   const fetchSchedules = async () => {
     setLoading(true)

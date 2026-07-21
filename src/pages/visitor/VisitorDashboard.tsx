@@ -418,7 +418,17 @@ export function VisitorDashboard() {
   const [bookingLoading, setBookingLoading] = useState(false)
 
   useEffect(() => { fetchRides() }, [rideParams])
-  useEffect(() => { fetchBookings() }, [bookParams, bookSearch, bookDateFrom, bookDateTo])
+  // ✅ FIXED — fetchBookings used to only run once on mount/filter-change,
+  // so the bell badge (unseen Pending/Approved/Cancelled counts) went stale
+  // the moment you landed on the dashboard — a booking approved by an admin
+  // 5 minutes into your session wouldn't show up until you changed a filter
+  // or re-logged in. Now it also re-polls every 30s, same pattern as the
+  // Admin sidebar's pending-bookings badge (AdminLayout.tsx).
+  useEffect(() => {
+    fetchBookings()
+    const interval = setInterval(fetchBookings, 10_000)
+    return () => clearInterval(interval)
+  }, [bookParams, bookSearch, bookDateFrom, bookDateTo])
   useEffect(() => { fetchPromos() }, [])
 
   const fetchPromos = async () => {

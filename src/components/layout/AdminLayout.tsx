@@ -27,7 +27,7 @@ const navItems: NavItem[] = [
 ]
 
 // How often to re-check the pending bookings count, in milliseconds.
-const PENDING_POLL_INTERVAL = 30_000
+const PENDING_POLL_INTERVAL = 10_000
 
 // ── Logout Confirm Modal — same "are you sure" pattern used on the
 // Visitor/Attendant portals (PortalHeader.tsx), now on the Admin side too. ──
