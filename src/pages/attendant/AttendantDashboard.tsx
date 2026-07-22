@@ -874,6 +874,11 @@ export function AttendantDashboard() {
                       ${s.status === 'Open' ? 'bg-green-100 text-green-700'
                         : s.status === 'Full' ? 'bg-red-100 text-red-700'
                         : s.status === 'Completed' ? 'bg-blue-100 text-blue-700'
+                        // ✅ FIXED — was the same 'bg-gray-100 text-gray-600' as the
+                        // "Regular" type badge right next to it, so a Cancelled
+                        // Regular schedule showed two identical gray pills. Now a
+                        // distinct slate/dark badge so it reads as its own status.
+                        : s.status === 'Cancelled' ? 'bg-slate-700 text-white'
                         : 'bg-gray-100 text-gray-600'}`}>
                       {s.status}
                     </span>

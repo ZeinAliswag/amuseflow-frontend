@@ -107,7 +107,9 @@ const statusColor = (s: string) => {
   if (s === 'Open')      return 'bg-green-100 text-green-700 border-green-300'
   if (s === 'Full')      return 'bg-red-100 text-red-700 border-red-300'
   if (s === 'Completed') return 'bg-blue-100 text-blue-700 border-blue-300'
-  if (s === 'Cancelled') return 'bg-gray-100 text-gray-500 border-gray-300'
+  // ✅ FIXED — was the same gray as the "Regular" type badge shown right next
+  // to it, so a Cancelled Regular schedule showed two identical gray pills.
+  if (s === 'Cancelled') return 'bg-slate-700 text-white border-slate-700'
   return 'bg-gray-100 text-gray-600 border-gray-200'
 }
 
