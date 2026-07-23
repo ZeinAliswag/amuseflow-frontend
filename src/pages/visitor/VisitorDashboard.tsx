@@ -426,7 +426,7 @@ export function VisitorDashboard() {
   // Admin sidebar's pending-bookings badge (AdminLayout.tsx).
   useEffect(() => {
     fetchBookings()
-    const interval = setInterval(fetchBookings, 10_000)
+    const interval = setInterval(fetchBookings, 5_000)
     return () => clearInterval(interval)
   }, [bookParams, bookSearch, bookDateFrom, bookDateTo])
   useEffect(() => { fetchPromos() }, [])

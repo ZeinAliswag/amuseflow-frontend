@@ -379,7 +379,7 @@ export function AttendantDashboard() {
   // every 30s so a newly-assigned schedule shows up live, not just at login.
   useEffect(() => {
     fetchSchedules()
-    const interval = setInterval(fetchSchedules, 10_000)
+    const interval = setInterval(fetchSchedules, 5_000)
     return () => clearInterval(interval)
   }, [params])
 
