@@ -12,6 +12,19 @@ import toast from 'react-hot-toast'
 import { useState, useEffect } from 'react'
 import type { ActivityLog } from '../../types'
 
+// ✅ NEW — masks the last segment of any booking code found inside an
+// activity log's Details text, e.g. "AF-20260723-3CF674" -> "AF-20260723-••••••"
+// (and "AF-PROMO-20260719-E44386" -> "AF-PROMO-20260719-••••••"). Same idea as
+// AttendantDashboard's maskCode, just applied inline within a longer sentence.
+function maskBookingCodesInText(text: string): string {
+  return text.replace(/\bAF-(?:PROMO-)?\d{8}-[A-Z0-9]{6}\b/g, match => {
+    const parts = match.split('-')
+    const visible = parts.slice(0, -1).join('-')
+    const hiddenLen = parts[parts.length - 1].length
+    return `${visible}-${'•'.repeat(hiddenLen)}`
+  })
+}
+
 // Formats digits as the Filipino mobile style: 09XX XXX XXXX
 function formatPHMobile(raw: string) {
   const digits = raw.replace(/\D/g, '').slice(0, 11)
@@ -589,8 +602,11 @@ function DateRangeButton({ from, to, onClick }: { from: string; to: string; onCl
 
 // ── Activity Detail modal — same layout/copy as the admin Logs page's
 // LogModal, nested above the panel at z-[110]. ──
-function ActivityDetailModal({ log, onClose }: { log: ActivityLog; onClose: () => void }) {
+function ActivityDetailModal({ log, onClose, role }: { log: ActivityLog; onClose: () => void; role: 'Visitor' | 'Ride Attendant' }) {
   const c = moduleColor(log.module)
+  // Same rule as MiniActivityPanel: only mask booking codes for the Ride
+  // Attendant — a visitor should see their own booking codes in full.
+  const formatDetails = (d: string) => role === 'Ride Attendant' ? maskBookingCodesInText(d) : d
   return (
     <div className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-4"
       onClick={e => e.target === e.currentTarget && onClose()}>
@@ -636,7 +652,7 @@ function ActivityDetailModal({ log, onClose }: { log: ActivityLog; onClose: () =
             <div className="flex-1 min-w-0">
               <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-0.5">Details</div>
               <div className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap break-words bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
-                {log.details ?? 'No additional details recorded.'}
+                {log.details ? formatDetails(log.details) : 'No additional details recorded.'}
               </div>
             </div>
           </div>
@@ -660,6 +676,12 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
   const [dateTo, setDateTo] = useState('')
   const [dateModalOpen, setDateModalOpen] = useState(false)
   const [viewLog, setViewLog] = useState<ActivityLog | null>(null)
+
+  // ✅ FIXED — only mask booking codes for the Ride Attendant. A visitor
+  // reading their OWN activity log should see their own full booking code;
+  // masking made sense for an attendant (who's just handling codes on
+  // someone else's behalf) but not for the account it actually belongs to.
+  const formatDetails = (d: string) => role === 'Ride Attendant' ? maskBookingCodesInText(d) : d
 
   useEffect(() => { fetchLogs() }, [search, moduleFilter, dateFrom, dateTo])
 
@@ -773,7 +795,7 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
                             </span>
                             <span className="text-[13px] font-semibold text-gray-900">{log.action}</span>
                           </div>
-                          <div className="text-[11px] text-gray-500 truncate">{log.details ?? 'No details'}</div>
+                          <div className="text-[11px] text-gray-500 truncate">{log.details ? formatDetails(log.details) : 'No details'}</div>
                         </div>
                         <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
                           <span className="text-[10px] text-gray-400 whitespace-nowrap">{timeAgo(log.createdAt)}</span>
@@ -791,7 +813,7 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
         </div>
       </div>
 
-      {viewLog && <ActivityDetailModal log={viewLog} onClose={() => setViewLog(null)} />}
+      {viewLog && <ActivityDetailModal log={viewLog} onClose={() => setViewLog(null)} role={role} />}
       {dateModalOpen && (
         <DateRangeModal
           from={dateFrom} to={dateTo}

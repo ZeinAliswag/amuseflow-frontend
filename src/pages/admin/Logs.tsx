@@ -8,6 +8,19 @@ import type { ActivityLog, PaginationRequest } from '../../types'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
 
+// ✅ NEW — masks the last segment of any booking code found inside an
+// activity log's Details text, e.g. "AF-20260723-3CF674" -> "AF-20260723-••••••"
+// (and "AF-PROMO-20260719-E44386" -> "AF-PROMO-20260719-••••••"). Same idea as
+// AttendantDashboard's maskCode, just applied inline within a longer sentence.
+function maskBookingCodesInText(text: string): string {
+  return text.replace(/\bAF-(?:PROMO-)?\d{8}-[A-Z0-9]{6}\b/g, match => {
+    const parts = match.split('-')
+    const visible = parts.slice(0, -1).join('-')
+    const hiddenLen = parts[parts.length - 1].length
+    return `${visible}-${'•'.repeat(hiddenLen)}`
+  })
+}
+
 const MODULE_OPTS = ['Ride', 'Schedule', 'Booking', 'User']
 
 const moduleColor = (m: string) => {
@@ -438,7 +451,7 @@ function LogModal({ log, onClose }: { log: ActivityLog; onClose: () => void }) {
             <div className="flex-1 min-w-0">
               <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-0.5">Details</div>
               <div className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap break-words bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
-                {log.details ?? 'No additional details recorded.'}
+                {log.details ? maskBookingCodesInText(log.details) : 'No additional details recorded.'}
               </div>
             </div>
           </div>
@@ -619,7 +632,7 @@ export default function AdminLogsPage() {
                                   )}
                                   <span className="text-[13px] font-semibold text-gray-900">{log.action}</span>
                                 </div>
-                                <p className="text-xs text-gray-500 truncate max-w-md">{log.details ?? 'No details'}</p>
+                                <p className="text-xs text-gray-500 truncate max-w-md">{log.details ? maskBookingCodesInText(log.details) : 'No details'}</p>
                                 <div className="flex items-center gap-3 mt-1.5">
                                   <div className="flex items-center gap-1 text-[11px] text-gray-400">
                                     <User className="w-3 h-3" />
