@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Scan, CheckCircle2, Calendar, Clock, Users, AlertCircle, XCircle,
   Wallet, Loader2, Ticket, ChevronRight, ChevronLeft, ChevronDown, Sparkles, ClipboardCheck,
-TrendingUp, X, Bell, ZoomIn, AlarmClock,
+TrendingUp, X, ZoomIn, AlarmClock,
   FerrisWheel, Tag
 } from 'lucide-react'
 import type { Schedule, Booking, PagedResponse, PaginationRequest } from '../../types'
@@ -356,27 +356,14 @@ export function AttendantDashboard() {
   // full-size ride photo zoom (shared across the verify panel, schedules list and roster modal)
   const [zoomSrc, setZoomSrc] = useState<string | null>(null)
 
-  // ref used to scroll down to the assigned-schedules card from the bell button
+  // ref used to scroll down to the assigned-schedules card
   const schedulesSectionRef = useRef<HTMLDivElement>(null)
-  const scrollToSchedules = () => {
-    schedulesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
 
-  // ── Unseen "My assigned schedules" tracking (bell icon) ─────────
-  const SEEN_KEY = 'attendant_seen_schedule_ids'
-  const [unseenCount, setUnseenCount] = useState(0)
-
-  const getSeenIds = (): Set<number> => {
-    try {
-      const raw = localStorage.getItem(SEEN_KEY)
-      return new Set(raw ? JSON.parse(raw) : [])
-    } catch { return new Set() }
-  }
-
-  // ✅ FIXED — same gap as VisitorDashboard: this only ran once on mount/
-  // filter-change, so the bell badge (unseen assigned-schedule count) went
-  // stale the moment the attendant landed on the dashboard. Now re-polls
-  // every 30s so a newly-assigned schedule shows up live, not just at login.
+  // ✅ FIXED — this only ran once on mount/filter-change, so the assigned-
+  // schedules list went stale the moment the attendant landed on the
+  // dashboard. Now re-polls every 5s so a newly-assigned schedule shows up
+  // live, not just at login. (The old local "unseen" bell badge that lived
+  // here was removed — real-time notifications now live in the header bell.)
   useEffect(() => {
     fetchSchedules()
     const interval = setInterval(fetchSchedules, 5_000)
@@ -390,14 +377,6 @@ export function AttendantDashboard() {
       const data = res.data.data ?? []
       setSchedules(data)
       setPagination(res.data.pagination)
-
-      // Show how many are new for this visit, then immediately persist them as
-      // seen so the badge won't reappear for these same schedules next time.
-      const seen = getSeenIds()
-      setUnseenCount(data.filter(s => !seen.has(s.id)).length)
-      try {
-        localStorage.setItem(SEEN_KEY, JSON.stringify(data.map(s => s.id)))
-      } catch {}
     } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to load schedules.')) }
     finally { setLoading(false) }
   }
@@ -549,17 +528,6 @@ export function AttendantDashboard() {
             <h1 className="text-2xl font-bold mb-1">{greeting}, {user?.firstName ?? 'there'}! 🎟️</h1>
             <p className="text-white/85 text-sm">Verify booking codes and keep the queue moving.</p>
           </div>
-
-          <button onClick={scrollToSchedules} title="Go to my assigned schedules"
-            className="relative flex items-center justify-center w-11 h-11 rounded-xl bg-white/20 hover:bg-white/30 border border-white/30 transition-colors flex-shrink-0">
-            <Bell className="w-5 h-5 text-white" />
-            {unseenCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full
-                bg-red-500 text-white text-[10px] font-bold leading-none border-2 border-amber-500">
-                {unseenCount > 9 ? '9+' : unseenCount}
-              </span>
-            )}
-          </button>
         </div>
       </div>
 

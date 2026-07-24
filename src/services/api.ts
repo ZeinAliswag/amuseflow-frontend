@@ -101,3 +101,18 @@ export const bookingApi = {
   bookPromo: (payload: { promoId: number }) =>
     api.post('/api/booking/promo', payload),
 }
+
+// ── Notifications (per-user, IsRead-tracked) ────────────────────
+export const notificationApi = {
+  getAll: (params: { page?: number; pageSize?: number }) =>
+    api.get('/api/notification', { params }),
+
+  getUnreadCount: () =>
+    api.get('/api/notification/unread-count'),
+
+  markAsRead: (id: number) =>
+    api.put(`/api/notification/${id}/read`),
+
+  markAllAsRead: () =>
+    api.put('/api/notification/read-all'),
+}

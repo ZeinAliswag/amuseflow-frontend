@@ -3,7 +3,7 @@ import {
   Ticket, CheckCircle2, Clock, XCircle,
   Users, Calendar, ChevronLeft, ChevronRight, ChevronDown,
   Search, MapPin, ZoomIn, X, Loader2, ArrowLeft,
-  UserCog, CalendarDays, Bell, AlarmClock,
+  UserCog, CalendarDays, AlarmClock,
   FerrisWheel, Tag, PackageCheck
 } from 'lucide-react'
 import type { Booking, Ride, RidePromo, PaginationRequest } from '../../types'
@@ -375,34 +375,8 @@ export function VisitorDashboard() {
   const [bookStats, setBookStats] = useState({ total:0, upcoming:0, completed:0, cancelled:0 })
   const [allBookingsRaw, setAllBookingsRaw] = useState<any[]>([])
 
-  // ── Unseen status-change tracking (bell icon) — Pending, Approved, Cancelled ──
-  const SEEN_STATUS_KEY = 'visitor_seen_status_booking_ids'
-  const [unseenApprovedCount, setUnseenApprovedCount] = useState(0)
-  const [unseenPendingCount, setUnseenPendingCount] = useState(0)
-  const [unseenCancelledCount, setUnseenCancelledCount] = useState(0)
+  // ref used to scroll down to the bookings section
   const bookingsSectionRef = useRef<HTMLDivElement>(null)
-  const scrollToBookings = () => {
-    bookingsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
-  const getSeenStatusIds = (): Set<string> => {
-    try {
-      const raw = localStorage.getItem(SEEN_STATUS_KEY)
-      return new Set(raw ? JSON.parse(raw) : [])
-    } catch { return new Set() }
-  }
-
-  // Clicking the bell marks everything as seen right away (badges vanish immediately)
-  const markBellSeen = () => {
-    scrollToBookings()
-    const allIds = allBookingsRaw
-      .filter((b: any) => b.status === 'Pending' || b.status === 'Approved' || b.status === 'Cancelled')
-      .map((b: any) => `${b.status}:${b.id}`)
-    try { localStorage.setItem(SEEN_STATUS_KEY, JSON.stringify(allIds)) } catch {}
-    setUnseenApprovedCount(0)
-    setUnseenPendingCount(0)
-    setUnseenCancelledCount(0)
-  }
 
   // booking filters
   const [bookSearch, setBookSearch]   = useState('')
@@ -419,11 +393,13 @@ export function VisitorDashboard() {
 
   useEffect(() => { fetchRides() }, [rideParams])
   // ✅ FIXED — fetchBookings used to only run once on mount/filter-change,
-  // so the bell badge (unseen Pending/Approved/Cancelled counts) went stale
-  // the moment you landed on the dashboard — a booking approved by an admin
-  // 5 minutes into your session wouldn't show up until you changed a filter
-  // or re-logged in. Now it also re-polls every 30s, same pattern as the
-  // Admin sidebar's pending-bookings badge (AdminLayout.tsx).
+  // so booking status changes went stale the moment you landed on the
+  // dashboard — a booking approved by an admin 5 minutes into your session
+  // wouldn't show up until you changed a filter or re-logged in. Now it also
+  // re-polls every 5s, same pattern as the Admin sidebar's pending-bookings
+  // badge (AdminLayout.tsx). (The old local "unseen" bell badge that lived
+  // in the hero was removed — real-time notifications now live in the
+  // header bell.)
   useEffect(() => {
     fetchBookings()
     const interval = setInterval(fetchBookings, 5_000)
@@ -552,16 +528,6 @@ export function VisitorDashboard() {
       // store raw list; monthly stats are recomputed reactively below
       const all: any[] = allRes.data?.data?.data ?? allRes.data?.data ?? allRes.data ?? []
       setAllBookingsRaw(all)
-
-      // Track unseen Pending/Approved/Cancelled bookings since the visitor's
-      // last bell-click. Badge stays until they click the bell (see markBellSeen).
-      const seen = getSeenStatusIds()
-      const countUnseen = (status: string) =>
-        all.filter((b: any) => b.status === status && !seen.has(`${status}:${b.id}`)).length
-
-      setUnseenPendingCount(countUnseen('Pending'))
-      setUnseenApprovedCount(countUnseen('Approved'))
-      setUnseenCancelledCount(countUnseen('Cancelled'))
     } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to load bookings.')) }
     finally { setBookLoading(false) }
   }
@@ -632,34 +598,6 @@ export function VisitorDashboard() {
             <h1 className="text-2xl font-bold mb-1">{greeting}, {user?.firstName}! 🎢</h1>
             <p className="text-white/80 text-sm">Ready for an adventure? Browse rides and pick a schedule.</p>
           </div>
-
-          <button onClick={markBellSeen}
-            title={[
-              unseenPendingCount > 0 ? `${unseenPendingCount} pending` : null,
-              unseenCancelledCount > 0 ? `${unseenCancelledCount} cancelled` : null,
-              unseenApprovedCount > 0 ? `${unseenApprovedCount} approved` : null,
-            ].filter(Boolean).join(' · ') || 'Go to my bookings'}
-            className="relative flex items-center justify-center w-11 h-11 rounded-xl bg-white/20 hover:bg-white/30 border border-white/30 transition-colors flex-shrink-0">
-            <Bell className="w-5 h-5 text-white" />
-            {/* Amber badge — pending bookings not yet reviewed */}
-            {unseenPendingCount > 0 && (
-              <span className="absolute -top-1 -left-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full
-                bg-amber-500 text-white text-[10px] font-bold leading-none border-2 border-emerald-600">
-                {unseenPendingCount > 9 ? '9+' : unseenPendingCount}
-              </span>
-            )}
-            {/* Red badge — cancelled bookings not yet seen (takes priority over approved) */}
-            {(unseenCancelledCount > 0 || unseenApprovedCount > 0) && (
-              <span className={`absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full
-                text-white text-[10px] font-bold leading-none border-2 border-emerald-600 ${
-                  unseenCancelledCount > 0 ? 'bg-red-500' : 'bg-green-500'
-                }`}>
-                {unseenCancelledCount > 0
-                  ? (unseenCancelledCount > 9 ? '9+' : unseenCancelledCount)
-                  : (unseenApprovedCount > 9 ? '9+' : unseenApprovedCount)}
-              </span>
-            )}
-          </button>
         </div>
       </div>
 

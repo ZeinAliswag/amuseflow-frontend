@@ -2,15 +2,16 @@ import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   LogOut, ChevronDown, History, KeyRound, X, Loader2,
-  Calendar, CheckCircle2, Filter,
+  Calendar, CheckCircle2, Filter, Bell, CheckCheck,
   Circle, Pencil, Lock, Ticket, UserCog, ClipboardList,
-  Search, ChevronLeft, ChevronRight, CalendarDays, Tag, FileText, User, Clock
+  Search, ChevronLeft, ChevronRight, CalendarDays, Tag, FileText, User, Clock,
+  XCircle, Wallet, PartyPopper
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import api from '../../services/api'
+import api, { notificationApi } from '../../services/api'
 import toast from 'react-hot-toast'
 import { useState, useEffect } from 'react'
-import type { ActivityLog } from '../../types'
+import type { ActivityLog, Notification } from '../../types'
 
 // ✅ NEW — masks the last segment of any booking code found inside an
 // activity log's Details text, e.g. "AF-20260723-3CF674" -> "AF-20260723-••••••"
@@ -825,6 +826,159 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
   )
 }
 
+// ── Notification bell — real backend-tracked notifications (IsRead), not
+// the localStorage "seen" bells on the dashboards. Facebook-style: a bell
+// with an unread badge that polls every 5s, opens a dropdown of individual
+// notifications, and clicking one marks it read (optimistic UI update,
+// then confirmed against the API). Shared by both Visitor and Ride
+// Attendant portals via PortalHeader below.
+// ✅ NEW — visual identity per notification, based on its title/module, so
+// the dropdown reads at a glance (schedule assignment vs. approved/rejected/
+// paid/cancelled booking) instead of every row looking identical.
+function getNotificationVisual(n: Notification) {
+  const t = n.title.toLowerCase()
+  if (t.includes('reject') || t.includes('cancel'))
+    return { Icon: XCircle, iconBg: 'bg-red-100', iconColor: 'text-red-600', accent: 'bg-red-500' }
+  if (t.includes('paid') || t.includes('payment'))
+    return { Icon: Wallet, iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', accent: 'bg-emerald-500' }
+  if (t.includes('approved'))
+    return { Icon: PartyPopper, iconBg: 'bg-blue-100', iconColor: 'text-blue-600', accent: 'bg-blue-500' }
+  if (n.module === 'Schedule' || t.includes('schedule'))
+    return { Icon: Calendar, iconBg: 'bg-amber-100', iconColor: 'text-amber-600', accent: 'bg-amber-500' }
+  return { Icon: Ticket, iconBg: 'bg-gray-100', iconColor: 'text-gray-500', accent: 'bg-gray-400' }
+}
+
+function NotificationBell() {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+
+  const fetchUnreadCount = async () => {
+    try {
+      const res = await notificationApi.getUnreadCount()
+      setUnreadCount(res.data?.data ?? 0)
+    } catch { /* silent — badge just won't update this tick */ }
+  }
+
+  const fetchNotifications = async () => {
+    setLoading(true)
+    try {
+      const res = await notificationApi.getAll({ page: 1, pageSize: 20 })
+      const list = res.data?.data?.data ?? res.data?.data ?? res.data ?? []
+      setNotifications(Array.isArray(list) ? list : [])
+    } catch {
+      toast.error('Failed to load notifications.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchUnreadCount()
+    const interval = setInterval(fetchUnreadCount, 5_000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const toggleOpen = () => {
+    const next = !open
+    setOpen(next)
+    if (next) fetchNotifications()
+  }
+
+  const handleMarkRead = async (n: Notification) => {
+    if (n.isRead) return
+    // Optimistic — flip the UI immediately, reconcile with the server after.
+    setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x))
+    setUnreadCount(c => Math.max(0, c - 1))
+    try { await notificationApi.markAsRead(n.id) } catch { fetchUnreadCount() }
+  }
+
+  const handleMarkAllRead = async () => {
+    if (unreadCount === 0) return
+    setNotifications(prev => prev.map(x => ({ ...x, isRead: true })))
+    setUnreadCount(0)
+    try { await notificationApi.markAllAsRead() } catch { fetchUnreadCount() }
+  }
+
+  return (
+    <div className="relative">
+      <button onClick={toggleOpen} title="Notifications"
+        className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 transition-all border border-white/20">
+        <Bell className="w-4 h-4 text-white" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full
+            bg-red-500 text-white text-[10px] font-bold leading-none border-2 border-white/40">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl w-96 max-h-[75vh] flex flex-col z-50 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-100 flex-shrink-0 bg-gray-50/60">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold text-gray-900">Notifications</p>
+                {unreadCount > 0 && (
+                  <span className="flex items-center justify-center min-w-[19px] h-[19px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </div>
+              {unreadCount > 0 && (
+                <button onClick={handleMarkAllRead}
+                  className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+                  <CheckCheck className="w-3.5 h-3.5" /> Mark all as read
+                </button>
+              )}
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {loading ? (
+                <div className="flex items-center justify-center py-14">
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="flex flex-col items-center py-14 text-gray-400">
+                  <div className="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center mb-3">
+                    <Bell className="w-6 h-6 text-gray-300" />
+                  </div>
+                  <div className="text-sm font-medium text-gray-500">No notifications yet</div>
+                  <div className="text-xs text-gray-400 mt-0.5">We'll let you know when something happens</div>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {notifications.map(n => {
+                    const { Icon, iconBg, iconColor, accent } = getNotificationVisual(n)
+                    return (
+                      <button key={n.id} onClick={() => handleMarkRead(n)}
+                        className={`relative w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-gray-50 transition-colors ${!n.isRead ? 'bg-blue-50/50' : ''}`}>
+                        {!n.isRead && <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${accent}`} />}
+                        <div className={`w-9 h-9 rounded-full ${iconBg} flex items-center justify-center flex-shrink-0`}>
+                          <Icon className={`w-4 h-4 ${iconColor}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className={`text-xs leading-snug ${!n.isRead ? 'font-bold text-gray-900' : 'font-medium text-gray-500'}`}>{n.title}</p>
+                            {!n.isRead && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1" />}
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{n.message}</p>
+                          <p className="text-[10px] text-gray-400 mt-1.5 font-medium">{timeAgo(n.createdAt)}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function PortalHeader({
   portalLabel, portalIcon, accentColor, avatarColor, roleLabel, roleBadgeColor, children,
   iconWrapperClassName = 'w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center'
@@ -878,6 +1032,10 @@ function PortalHeader({
               <p className="text-white/70 text-xs">{portalLabel}</p>
             </div>
           </div>
+
+          <div className="flex items-center gap-3">
+          {/* Notifications */}
+          <NotificationBell />
 
           {/* User menu */}
           <div className="relative">
@@ -941,6 +1099,7 @@ function PortalHeader({
                 </div>
               </>
             )}
+          </div>
           </div>
         </div>
       </header>

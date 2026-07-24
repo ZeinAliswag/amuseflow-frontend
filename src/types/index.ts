@@ -211,6 +211,20 @@ export interface ActivityLog {
   role?: string
 }
 
+// ── Notification (per-user, IsRead-tracked) ────────────────────
+// Created directly by the backend services (Booking/Schedule) — distinct
+// from ActivityLog: scoped to one recipient, and tracked read/unread
+// instead of being a shared audit trail everyone can see.
+export interface Notification {
+  id: number
+  module: string        // Booking | Schedule
+  title: string
+  message: string
+  relatedId?: number     // BookingId or ScheduleId
+  isRead: boolean
+  createdAt: string
+}
+
 // ── Dashboard ─────────────────────────────────────────────────
 export interface AdminDashboard {
   totalRides: number
