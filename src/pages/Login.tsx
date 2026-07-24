@@ -13,6 +13,13 @@ function formatPHMobile(raw: string) {
   return parts.join(' ')
 }
 
+// ✅ NEW — capitalizes the first letter of each word as the person types
+// (e.g. "juan" -> "Juan", "dela cruz" -> "Dela Cruz"), without touching the
+// rest of what they've typed so far.
+function capitalizeName(raw: string) {
+  return raw.replace(/(^|\s)([a-z])/g, (_, boundary, letter) => boundary + letter.toUpperCase())
+}
+
 export default function Login() {
   const [mode, setMode]       = useState<'login'|'register'>('login')
   const [showPw, setShowPw]   = useState(false)
@@ -187,12 +194,12 @@ export default function Login() {
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">First name *</label>
                     <input className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 transition-all"
-                      placeholder="Juan" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                      placeholder="Juan" value={firstName} onChange={e => setFirstName(capitalizeName(e.target.value))} />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Last name *</label>
                     <input className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 transition-all"
-                      placeholder="Dela Cruz" value={lastName} onChange={e => setLastName(e.target.value)} />
+                      placeholder="Dela Cruz" value={lastName} onChange={e => setLastName(capitalizeName(e.target.value))} />
                   </div>
                 </div>
 

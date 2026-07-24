@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Ticket, Users, ClipboardList,
   Calendar, LogOut, ChevronDown, Menu, X,
-  FerrisWheel, Loader2, BadgePercent
+  FerrisWheel, Loader2, BadgePercent, Bell
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import api from '../../services/api'
@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
   { to: '/admin/promos',    icon: <BadgePercent className="w-5 h-5" />,    label: 'Ride Promos' },
   { to: '/admin/schedules', icon: <Calendar className="w-5 h-5" />,        label: 'Schedules' },
   { to: '/admin/bookings',  icon: <Ticket className="w-5 h-5" />,          label: 'Bookings' },
+  { to: '/admin/notifications', icon: <Bell className="w-5 h-5" />,       label: 'Notifications' },
   { to: '/admin/users',     icon: <Users className="w-5 h-5" />,           label: 'Users' },
   { to: '/admin/logs',      icon: <ClipboardList className="w-5 h-5" />,   label: 'Activity Logs' },
 ]
@@ -71,6 +72,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   // (see Bookings.tsx's mark-all-read call), not one row at a time.
   const [unreadCount, setUnreadCount] = useState(0)
 
+  // ✅ NEW — system-wide unread notification count (every recipient, not
+  // just this admin's own), backing the Notifications nav badge — same
+  // Instagram-style pattern as the Bookings badge above.
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0)
+
   // ✅ NEW — logout now goes through a confirm modal instead of firing
   // immediately on click, so a stray/mis-click doesn't sign the admin out.
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
@@ -78,7 +84,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetchUnreadCount()
-    const interval = setInterval(fetchUnreadCount, UNREAD_POLL_INTERVAL)
+    fetchUnreadNotifCount()
+    const interval = setInterval(() => { fetchUnreadCount(); fetchUnreadNotifCount() }, UNREAD_POLL_INTERVAL)
     return () => clearInterval(interval)
   }, [])
 
@@ -86,6 +93,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     try {
       const res = await api.get('/api/booking/unread-count')
       setUnreadCount(res.data?.data ?? 0)
+    } catch {}
+  }
+
+  const fetchUnreadNotifCount = async () => {
+    try {
+      const res = await api.get('/api/notification/all/unread-count')
+      setUnreadNotifCount(res.data?.data ?? 0)
     } catch {}
   }
 
@@ -156,6 +170,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full
                   bg-red-500 text-white text-[11px] font-bold leading-none flex-shrink-0">
                   {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+              {item.to === '/admin/notifications' && unreadNotifCount > 0 && (
+                <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full
+                  bg-red-500 text-white text-[11px] font-bold leading-none flex-shrink-0">
+                  {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
                 </span>
               )}
             </NavLink>

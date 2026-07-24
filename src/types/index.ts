@@ -227,6 +227,11 @@ export interface Notification {
   relatedId?: number     // BookingId or ScheduleId
   isRead: boolean
   createdAt: string
+
+  // ✅ NEW — populated only on the admin-wide list (GET /api/notification/all).
+  recipientName?: string
+  recipientUsername?: string
+  recipientRole?: string
 }
 
 // ── Dashboard ─────────────────────────────────────────────────

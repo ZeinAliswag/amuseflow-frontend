@@ -13,6 +13,13 @@ import toast from 'react-hot-toast'
 
 const ROLES = ['Visitor', 'Admin', 'Ride Attendant']
 
+// ✅ NEW — capitalizes the first letter of each word as the admin types
+// (e.g. "juan" -> "Juan", "dela cruz" -> "Dela Cruz"), without touching the
+// rest of what's already been typed.
+function capitalizeName(raw: string) {
+  return raw.replace(/(^|\s)([a-z])/g, (_, boundary, letter) => boundary + letter.toUpperCase())
+}
+
 // Formats digits as the Filipino mobile style: 09XX XXX XXXX
 function formatPHMobile(raw: string) {
   const digits = raw.replace(/\D/g, '').slice(0, 11)
@@ -563,14 +570,14 @@ export default function AdminUsersPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">First name <span className="text-red-500">*</span></label>
               <input required value={createForm.firstName}
-                onChange={e => setCreateForm({...createForm, firstName: e.target.value})}
+                onChange={e => setCreateForm({...createForm, firstName: capitalizeName(e.target.value)})}
                 placeholder="Juan"
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Last name <span className="text-red-500">*</span></label>
               <input required value={createForm.lastName}
-                onChange={e => setCreateForm({...createForm, lastName: e.target.value})}
+                onChange={e => setCreateForm({...createForm, lastName: capitalizeName(e.target.value)})}
                 placeholder="Dela Cruz"
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" />
             </div>

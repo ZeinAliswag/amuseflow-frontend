@@ -10,6 +10,7 @@ import AdminRidesPage from './pages/admin/Rides'
 import AdminPromosPage from './pages/admin/Promos'
 import AdminSchedulesPage from './pages/admin/Schedules'
 import AdminBookingsPage from './pages/admin/Bookings'
+import AdminNotificationsPage from './pages/admin/Notifications'
 import AdminUsersPage from './pages/admin/Users'
 import AdminLogsPage from './pages/admin/Logs'
 import { VisitorDashboard } from './pages/visitor/VisitorDashboard'
@@ -70,6 +71,11 @@ function AppRoutes() {
       <Route path="/admin/bookings" element={
         <ProtectedRoute roles={['Admin']}>
           <AdminLayout><AdminBookingsPage /></AdminLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/admin/notifications" element={
+        <ProtectedRoute roles={['Admin']}>
+          <AdminLayout><AdminNotificationsPage /></AdminLayout>
         </ProtectedRoute>
       } />
       <Route path="/admin/users" element={

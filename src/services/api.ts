@@ -115,4 +115,15 @@ export const notificationApi = {
 
   markAllAsRead: () =>
     api.put('/api/notification/read-all'),
+
+  // ✅ NEW — admin-wide Notifications module (Admin only): every recipient,
+  // not just the caller's own.
+  getAllAdmin: (params: Record<string, unknown>) =>
+    api.get('/api/notification/all', { params }),
+
+  getTotalUnreadCount: () =>
+    api.get('/api/notification/all/unread-count'),
+
+  markAllAsReadGlobal: () =>
+    api.put('/api/notification/all/mark-all-read'),
 }
