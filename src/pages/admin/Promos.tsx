@@ -34,6 +34,29 @@ const toISO = (d: Date) => {
   return `${y}-${m}-${day}`
 }
 
+// ✅ CHANGED — was locked purely on promo.promoDate (so a promo became
+// uneditable the whole day it was scheduled, even hours before anything
+// actually started). Now locks the moment the EARLIEST call time among its
+// bundled rides has passed — falling back to each ride's start time if a
+// ride has no call time set. "HH:mm:ss" strings sort correctly as plain
+// strings, so picking the earliest is just a lexicographic min.
+function earliestCallDateTime(promo: RidePromo): Date | null {
+  const times = promo.rides
+    .map(r => r.callTime || r.startTime)
+    .filter((t): t is string => !!t)
+  if (!times.length) return null
+  const earliest = times.sort()[0]
+  return new Date(`${promo.promoDate.slice(0, 10)}T${earliest}`)
+}
+
+function isPromoLocked(promo: RidePromo): boolean {
+  if (promo.isDeleted) return false
+  const lockAt = earliestCallDateTime(promo)
+  // No call/start time on any ride (shouldn't normally happen) — fall back
+  // to the old date-only behavior so nothing becomes silently uneditable.
+  return lockAt ? new Date() >= lockAt : promo.promoDate.slice(0, 10) <= toISO(new Date())
+}
+
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 
 // ── Purple, past-dates-disabled single date picker for the promo date field.
@@ -889,12 +912,12 @@ export default function AdminPromosPage() {
           <>
             <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {promos.map(promo => {
-                // ✅ NEW — once a promo's date has arrived (today or already
-                // past), it's locked: visitors may already be reserved or
-                // checked in against its bundled rides/schedules, so editing
-                // or deleting it out from under them is blocked. Only
-                // still-upcoming promos remain editable/deletable.
-                const locked = !promo.isDeleted && promo.promoDate.slice(0, 10) <= toISO(new Date())
+                // ✅ CHANGED — locked once the earliest call time among this
+                // promo's bundled rides has started (not just once its date
+                // arrives): visitors may already be checking in for that
+                // ride, so editing or deleting the promo out from under them
+                // is blocked from that moment on.
+                const locked = isPromoLocked(promo)
                 return (
                 <div key={promo.id}
                   className={`bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all group ${
@@ -970,11 +993,11 @@ export default function AdminPromosPage() {
                         </button>
                       ) : locked ? (
                         <>
-                          <button disabled title="This promo's date has arrived — it's locked and can no longer be edited."
+                          <button disabled title="This promo's call time has started — it's locked and can no longer be edited."
                             className="flex items-center justify-center w-8 h-8 bg-gray-50 text-gray-300 border border-gray-200 rounded-xl cursor-not-allowed">
                             <Pencil className="w-4 h-4" />
                           </button>
-                          <button disabled title="This promo's date has arrived — it's locked and can no longer be deleted."
+                          <button disabled title="This promo's call time has started — it's locked and can no longer be deleted."
                             className="flex items-center justify-center w-8 h-8 bg-gray-50 text-gray-300 border border-gray-200 rounded-xl cursor-not-allowed">
                             <Trash2 className="w-4 h-4" />
                           </button>
