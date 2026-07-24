@@ -178,6 +178,10 @@ export interface Booking {
   paidAt?: string
   bookedAt: string
   notes?: string
+
+  // ✅ NEW — false until the admin views/clicks this booking (or its latest
+  // status/payment change) in the Admin Bookings list.
+  isRead: boolean
 }
 
 // ── User ──────────────────────────────────────────────────────

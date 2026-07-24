@@ -533,6 +533,15 @@ export default function AdminBookingsPage() {
     finally { setActionLoading(false) }
   }
 
+  // ✅ CHANGED — was one click-to-read per row. Now matches an app-icon
+  // badge instead: opening the Bookings page bulk-marks EVERY unread
+  // booking as read in one shot (fires once on mount). The rows on THIS
+  // render still show their red "New" highlight from the data already
+  // fetched — it's the sidebar badge (and any later refetch) that clears.
+  useEffect(() => {
+    api.put('/api/booking/mark-all-read').catch(() => {})
+  }, [])
+
   return (
     <div className="p-4 sm:p-6 space-y-5">
       {/* Header */}
@@ -595,7 +604,11 @@ export default function AdminBookingsPage() {
           <>
             <div className="divide-y divide-gray-300">
               {bookings.map(b => (
-                <div key={b.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 hover:bg-gray-50/60 transition-colors group">
+                <div key={b.id}
+                  className={`relative flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 transition-colors group ${
+                    !b.isRead ? 'bg-red-50/60' : 'hover:bg-gray-50/60'
+                  }`}>
+                  {!b.isRead && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-red-500" />}
                   <div className="flex items-center gap-3 sm:contents">
                     {/* Avatar */}
                     <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
@@ -604,7 +617,12 @@ export default function AdminBookingsPage() {
 
                     {/* Visitor + booking code */}
                     <div className="flex-1 sm:w-40 sm:flex-shrink-0 min-w-0">
-                      <div className="font-semibold text-gray-900 text-sm truncate">{b.visitorName}</div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="font-semibold text-gray-900 text-sm truncate">{b.visitorName}</div>
+                        {!b.isRead && (
+                          <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold uppercase tracking-wide">New</span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-gray-400">@{b.visitorUsername}</div>
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         <span className="font-mono text-xs text-gray-700 bg-gray-200 px-2 py-1 rounded font-semibold">{maskCode(b.bookingCode)}</span>

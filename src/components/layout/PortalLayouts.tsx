@@ -854,6 +854,15 @@ function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifications, setNotifications] = useState<Notification[]>([])
 
+  // ✅ NEW — date range filter, so a busy day of schedule cancel/reopen
+  // notifications (or just old ones) can be narrowed down instead of
+  // scrolling through everything. Filters client-side over the already-
+  // fetched page (see fetchNotifications below).
+  const [showDateFilter, setShowDateFilter] = useState(false)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const hasDateFilter = !!dateFrom || !!dateTo
+
   const fetchUnreadCount = async () => {
     try {
       const res = await notificationApi.getUnreadCount()
@@ -901,6 +910,17 @@ function NotificationBell() {
     try { await notificationApi.markAllAsRead() } catch { fetchUnreadCount() }
   }
 
+  // Narrows the already-fetched list down to createdAt within [dateFrom, dateTo].
+  const visibleNotifications = notifications.filter(n => {
+    if (!hasDateFilter) return true
+    const d = n.createdAt.slice(0, 10)
+    if (dateFrom && d < dateFrom) return false
+    if (dateTo && d > dateTo) return false
+    return true
+  })
+
+  const clearDateFilter = () => { setDateFrom(''); setDateTo('') }
+
   return (
     <div className="relative">
       <button onClick={toggleOpen} title="Notifications"
@@ -927,29 +947,55 @@ function NotificationBell() {
                   </span>
                 )}
               </div>
-              {unreadCount > 0 && (
-                <button onClick={handleMarkAllRead}
-                  className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors">
-                  <CheckCheck className="w-3.5 h-3.5" /> Mark all as read
+              <div className="flex items-center gap-3">
+                <button onClick={() => setShowDateFilter(true)} title="Filter by date"
+                  className={`relative flex items-center gap-1 text-xs font-semibold transition-colors ${
+                    hasDateFilter ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                  }`}>
+                  <Filter className="w-3.5 h-3.5" />
+                  {hasDateFilter && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 absolute -top-0.5 -right-1.5" />}
                 </button>
-              )}
+                {unreadCount > 0 && (
+                  <button onClick={handleMarkAllRead}
+                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+                    <CheckCheck className="w-3.5 h-3.5" /> Mark all as read
+                  </button>
+                )}
+              </div>
             </div>
+
+            {hasDateFilter && (
+              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 flex-shrink-0 bg-blue-50/50">
+                <span className="text-[11px] font-medium text-blue-700">
+                  {dateFrom && dateTo && dateFrom !== dateTo ? `${fmtShort(dateFrom)} – ${fmtShort(dateTo)}`
+                    : dateFrom ? `From ${fmtShort(dateFrom)}` : `Until ${fmtShort(dateTo)}`}
+                </span>
+                <button onClick={clearDateFilter} className="text-[11px] font-semibold text-blue-700 hover:text-blue-800">
+                  Clear
+                </button>
+              </div>
+            )}
+
             <div className="overflow-y-auto flex-1">
               {loading ? (
                 <div className="flex items-center justify-center py-14">
                   <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
                 </div>
-              ) : notifications.length === 0 ? (
+              ) : visibleNotifications.length === 0 ? (
                 <div className="flex flex-col items-center py-14 text-gray-400">
                   <div className="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center mb-3">
                     <Bell className="w-6 h-6 text-gray-300" />
                   </div>
-                  <div className="text-sm font-medium text-gray-500">No notifications yet</div>
-                  <div className="text-xs text-gray-400 mt-0.5">We'll let you know when something happens</div>
+                  <div className="text-sm font-medium text-gray-500">
+                    {hasDateFilter ? 'No notifications in this range' : 'No notifications yet'}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {hasDateFilter ? 'Try widening the date range.' : "We'll let you know when something happens"}
+                  </div>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-50">
-                  {notifications.map(n => {
+                  {visibleNotifications.map(n => {
                     const { Icon, iconBg, iconColor, accent } = getNotificationVisual(n)
                     return (
                       <button key={n.id} onClick={() => handleMarkRead(n)}
@@ -974,6 +1020,14 @@ function NotificationBell() {
             </div>
           </div>
         </>
+      )}
+
+      {showDateFilter && (
+        <DateRangeModal
+          from={dateFrom} to={dateTo}
+          onApply={(f, t) => { setDateFrom(f); setDateTo(t) }}
+          onClose={() => setShowDateFilter(false)}
+        />
       )}
     </div>
   )
