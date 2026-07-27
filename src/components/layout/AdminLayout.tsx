@@ -98,7 +98,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const fetchUnreadNotifCount = async () => {
     try {
-      const res = await api.get('/api/notification/all/unread-count')
+      // ✅ FIXED — the Notifications page this badge links to shows ONLY
+      // "Booking cancelled" entries (cancellations-only feed), but this was
+      // fetching the true system-wide unread count across every
+      // notification type/recipient. That mismatch meant the sidebar could
+      // show e.g. "3" while the page itself had nothing unread to show.
+      // Scoped with cancelledOnly so the two always agree.
+      const res = await api.get('/api/notification/all/unread-count', { params: { cancelledOnly: true } })
       setUnreadNotifCount(res.data?.data ?? 0)
     } catch {}
   }

@@ -406,7 +406,11 @@ export default function AdminNotificationsPage() {
 
   const fetchUnreadCount = async () => {
     try {
-      const res = await notificationApi.getTotalUnreadCount()
+      // ✅ FIXED — was fetching the true system-wide unread count (every
+      // notification type, every recipient), which could show unread while
+      // this cancellations-only page had nothing unread to show — bug fix,
+      // scope it to just "Booking cancelled" so it matches the feed below.
+      const res = await notificationApi.getTotalUnreadCount({ cancelledOnly: true })
       setUnreadCount(res.data?.data ?? 0)
     } catch { /* silent */ }
   }
@@ -443,7 +447,11 @@ export default function AdminNotificationsPage() {
     if (unreadCount === 0) return
     setMarkingAll(true)
     try {
-      await notificationApi.markAllAsReadGlobal()
+      // ✅ FIXED — was calling the truly global mark-all-read, which marks
+      // EVERY recipient's EVERY notification as read app-wide, not just the
+      // "Booking cancelled" ones shown on this page. Scoped with
+      // cancelledOnly so this button only affects what's actually visible.
+      await notificationApi.markAllAsReadGlobal({ cancelledOnly: true })
       toast.success('All notifications marked as read.')
       setNotifications(prev => prev.map(x => ({ ...x, isRead: true })))
       setUnreadCount(0)

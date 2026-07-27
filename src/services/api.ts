@@ -121,9 +121,13 @@ export const notificationApi = {
   getAllAdmin: (params: Record<string, unknown>) =>
     api.get('/api/notification/all', { params }),
 
-  getTotalUnreadCount: () =>
-    api.get('/api/notification/all/unread-count'),
+  // ✅ CHANGED — cancelledOnly lets a caller scope this to just "Booking
+  // cancelled" entries, matching the admin Notifications page's own
+  // cancellations-only feed (bug fix: this used to always be a true
+  // system-wide count, mismatching what the page actually displayed).
+  getTotalUnreadCount: (params?: { cancelledOnly?: boolean }) =>
+    api.get('/api/notification/all/unread-count', { params }),
 
-  markAllAsReadGlobal: () =>
-    api.put('/api/notification/all/mark-all-read'),
+  markAllAsReadGlobal: (params?: { cancelledOnly?: boolean }) =>
+    api.put('/api/notification/all/mark-all-read', null, { params }),
 }
