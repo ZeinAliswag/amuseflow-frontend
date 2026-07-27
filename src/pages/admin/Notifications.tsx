@@ -61,7 +61,20 @@ const toISO = (d: Date) => {
   const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0')
   return `${y}-${m}-${day}`
 }
+// ✅ CHANGED — added year so a filtered date range in a different year (e.g.
+// picking a past/future year in the calendar) doesn't render ambiguously as
+// just "Jan 9 – Jan 10" with no indication of which year.
 const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+// ✅ CHANGED — a same-year range only needs the year once, at the end
+// ("Jan 9 – Jan 10, 1974"); a range spanning two different years needs it on
+// both ends ("Jan 9, 1974 – Jan 10, 1978") so it isn't ambiguous.
+function fmtRange(from: string, to: string, sep = ' – ') {
+  if (from === to) return fmtLong(from)
+  return from.slice(0, 4) === to.slice(0, 4)
+    ? `${fmtShort(from)}${sep}${fmtLong(to)}`
+    : `${fmtLong(from)}${sep}${fmtLong(to)}`
+}
 
 // ── Generic combobox — reused for Module / Read-status / Role filters ──
 function FilterCombobox({ label, value, options, onChange, icon }: {
@@ -326,7 +339,7 @@ function DateRangeModal({ from, to, onApply, onClose }: {
 
           <div>
             <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
-              Pick a date {tempFrom && tempTo ? (tempFrom === tempTo ? `— ${fmtShort(tempFrom)}` : `— ${fmtShort(tempFrom)} to ${fmtShort(tempTo)}`) : ''}
+              Pick a date {tempFrom && tempTo ? `— ${fmtRange(tempFrom, tempTo, ' to ')}` : ''}
             </div>
             <MiniCalendar from={tempFrom} to={tempTo} onChange={(f, t) => { setTempFrom(f); setTempTo(t) }} />
           </div>
@@ -351,8 +364,8 @@ function DateRangeButton({ from, to, onClick }: { from: string; to: string; onCl
   const label = !from && !to
     ? 'All dates'
     : from && to
-      ? (from === to ? fmtShort(from) : `${fmtShort(from)} – ${fmtShort(to)}`)
-      : from ? `From ${fmtShort(from)}` : `Until ${fmtShort(to)}`
+      ? fmtRange(from, to)
+      : from ? `From ${fmtLong(from)}` : `Until ${fmtLong(to)}`
 
   return (
     <button type="button" onClick={onClick}
@@ -465,30 +478,30 @@ export default function AdminNotificationsPage() {
         )}
       </div>
 
-      {/* Filters — floating pill bar, not a bordered table toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* ✅ CHANGED — was a transparent/floating pill row sitting directly on
+          the gray page background. Now sits in the same white bordered
+          toolbar container used on the Activity Logs / Bookings pages. */}
+      <div className="bg-white border border-gray-200 rounded-2xl px-4 sm:px-5 py-4 flex items-center gap-3 flex-wrap shadow-sm">
         <div className="relative w-full sm:w-auto">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
           <input value={search}
             onChange={e => { setSearch(e.target.value); setParams(p => ({ ...p, search: e.target.value, page: 1 })) }}
             placeholder="Search by visitor, ride, or title..."
-            className="pl-9 pr-4 py-2.5 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 w-full sm:w-64 bg-white shadow-sm" />
+            className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 w-full sm:w-56 bg-gray-50" />
         </div>
 
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-1.5 py-1 shadow-sm">
-          <FilterCombobox
-            label="All statuses"
-            value={readFilter}
-            options={READ_OPTS}
-            onChange={v => { setReadFilter(v); setParams(p => ({ ...p, page: 1 })) }}
-            icon={<Bell className="w-3.5 h-3.5 text-gray-400" />}
-          />
-          <div className="w-px h-5 bg-gray-200" />
-          <DateRangeButton
-            from={dateFrom} to={dateTo}
-            onClick={() => setDateModalOpen(true)}
-          />
-        </div>
+        <FilterCombobox
+          label="All statuses"
+          value={readFilter}
+          options={READ_OPTS}
+          onChange={v => { setReadFilter(v); setParams(p => ({ ...p, page: 1 })) }}
+          icon={<Bell className="w-3.5 h-3.5 text-gray-400" />}
+        />
+
+        <DateRangeButton
+          from={dateFrom} to={dateTo}
+          onClick={() => setDateModalOpen(true)}
+        />
       </div>
 
       {/* Feed — standalone cards on the page background, grouped by day */}

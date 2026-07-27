@@ -74,6 +74,11 @@ export interface Ride {
   price: number
   imagePath?: string
   isDeleted: boolean
+  // ✅ NEW — true while this ride has at least one Open or Full schedule
+  // (upcoming, still-open-today, or currently in progress). Backend also
+  // enforces this on delete (RideService.DeleteAsync) — this just lets the
+  // UI disable the button proactively instead of surfacing a toast error.
+  hasActiveSchedule: boolean
   createdAt: string
   updatedAt: string
 }

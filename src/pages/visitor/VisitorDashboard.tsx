@@ -55,7 +55,20 @@ const toISO = (d: Date) => {
   const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0')
   return `${y}-${m}-${day}`
 }
+// ✅ CHANGED — added year so a filtered date range in a different year (e.g.
+// picking a past/future year in the calendar) doesn't render ambiguously as
+// just "Jan 9 – Jan 10" with no indication of which year.
 const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+// ✅ CHANGED — a same-year range only needs the year once, at the end
+// ("Jan 9 – Jan 10, 1974"); a range spanning two different years needs it on
+// both ends ("Jan 9, 1974 – Jan 10, 1978") so it isn't ambiguous.
+function fmtRange(from: string, to: string, sep = ' – ') {
+  if (from === to) return fmtLong(from)
+  return from.slice(0, 4) === to.slice(0, 4)
+    ? `${fmtShort(from)}${sep}${fmtLong(to)}`
+    : `${fmtLong(from)}${sep}${fmtLong(to)}`
+}
 
 // ── Schedule type ─────────────────────────────────────────────
 interface Schedule {
@@ -327,8 +340,8 @@ function DateRangeButton({ from, to, onClick }: { from: string; to: string; onCl
   const label = !from && !to
     ? 'All dates'
     : from && to
-      ? (from === to ? fmtShort(from) : `${fmtShort(from)} – ${fmtShort(to)}`)
-      : from ? `From ${fmtShort(from)}` : `Until ${fmtShort(to)}`
+      ? fmtRange(from, to)
+      : from ? `From ${fmtLong(from)}` : `Until ${fmtLong(to)}`
 
   return (
     <button type="button" onClick={onClick}
