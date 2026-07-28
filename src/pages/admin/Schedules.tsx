@@ -96,7 +96,7 @@ function isCallTimePassed(s: Schedule) {
 function CallTimeBadge({ time, className = '' }: { time?: string; className?: string }) {
   if (!time) return null
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 font-semibold shadow-sm ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-semibold shadow-sm ${className}`}>
       <AlarmClock className="w-3.5 h-3.5" />
       Call time: {fmtTime(time)}
     </span>
@@ -157,9 +157,9 @@ function MonthYearPicker({ year, month, onChange, onClose }: {
                 onClick={() => { onChange(viewYear, i); onClose() }}
                 className={`py-2 rounded-xl text-xs font-medium transition-colors ${
                   isSelected
-                    ? 'bg-violet-600 text-white shadow-sm'
+                    ? 'bg-black text-white shadow-sm'
                     : isCurrent
-                    ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                    ? 'bg-gray-100 text-gray-700 border border-gray-300'
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}>
                 {m.slice(0, 3)}
@@ -172,7 +172,7 @@ function MonthYearPicker({ year, month, onChange, onClose }: {
         <div className="px-4 pb-4">
           <button type="button"
             onClick={() => { onChange(today.getFullYear(), today.getMonth()); onClose() }}
-            className="w-full py-2 rounded-xl text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors">
+            className="w-full py-2 rounded-xl text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
             Jump to today
           </button>
         </div>
@@ -1096,7 +1096,7 @@ export default function AdminSchedulesPage() {
           <div className="relative">
             <button onClick={() => setPickerOpen(p => !p)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-gray-100 transition-colors">
-              <Calendar className="w-5 h-5 text-violet-500" />
+              <Calendar className="w-5 h-5 text-gray-700" />
               <h2 className="text-base font-bold text-gray-900">{monthName}</h2>
               <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${pickerOpen ? 'rotate-180' : ''}`} />
             </button>

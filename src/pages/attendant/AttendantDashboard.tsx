@@ -88,7 +88,7 @@ function RideThumb({ path, name, size = 'w-11 h-11', iconSize = 'w-5 h-5', bg = 
 function CallTimeBadge({ time, className = '' }: { time?: string; className?: string }) {
   if (!time) return null
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 font-semibold shadow-sm ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-semibold shadow-sm ${className}`}>
       <AlarmClock className="w-3.5 h-3.5" />
       Call time: {fmtTime(time)}
     </span>

@@ -410,7 +410,7 @@ function Spinner() {
 function CallTimeBadge({ time, className = '' }: { time?: string; className?: string }) {
   if (!time) return null
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-700 font-semibold shadow-sm ${className}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-semibold shadow-sm ${className}`}>
       <AlarmClock className="w-3 h-3" />
       Call time: {fmtTime(time)}
     </span>

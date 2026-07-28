@@ -659,7 +659,7 @@ export default function AdminUsersPage() {
             className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all ${
               editTab === 'password' ? 'bg-white text-gray-900 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-700'
             }`}>
-            <Key className="w-4 h-4" /> Change password
+            <Key className="w-4 h-4" /> Change credentials
           </button>
         </div>
 
