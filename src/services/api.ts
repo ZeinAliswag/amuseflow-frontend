@@ -101,3 +101,33 @@ export const bookingApi = {
   bookPromo: (payload: { promoId: number }) =>
     api.post('/api/booking/promo', payload),
 }
+
+// ── Notifications (per-user, IsRead-tracked) ────────────────────
+export const notificationApi = {
+  getAll: (params: { page?: number; pageSize?: number }) =>
+    api.get('/api/notification', { params }),
+
+  getUnreadCount: () =>
+    api.get('/api/notification/unread-count'),
+
+  markAsRead: (id: number) =>
+    api.put(`/api/notification/${id}/read`),
+
+  markAllAsRead: () =>
+    api.put('/api/notification/read-all'),
+
+  // ✅ NEW — admin-wide Notifications module (Admin only): every recipient,
+  // not just the caller's own.
+  getAllAdmin: (params: Record<string, unknown>) =>
+    api.get('/api/notification/all', { params }),
+
+  // ✅ CHANGED — cancelledOnly lets a caller scope this to just "Booking
+  // cancelled" entries, matching the admin Notifications page's own
+  // cancellations-only feed (bug fix: this used to always be a true
+  // system-wide count, mismatching what the page actually displayed).
+  getTotalUnreadCount: (params?: { cancelledOnly?: boolean }) =>
+    api.get('/api/notification/all/unread-count', { params }),
+
+  markAllAsReadGlobal: (params?: { cancelledOnly?: boolean }) =>
+    api.put('/api/notification/all/mark-all-read', null, { params }),
+}

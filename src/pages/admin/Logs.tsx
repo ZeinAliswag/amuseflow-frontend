@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   ClipboardList, Filter, X, Clock, User, Tag, FileText,
  Calendar, Ticket, UserCog, Search, ChevronLeft, ChevronRight, CalendarDays, ChevronDown,
-  FerrisWheel, Shield, HardHat, UserRound
+  FerrisWheel, Shield, HardHat, UserRound, ArrowDownWideNarrow, ArrowUpWideNarrow
 } from 'lucide-react'
 import type { ActivityLog, PaginationRequest } from '../../types'
 import api from '../../services/api'
@@ -75,6 +75,16 @@ const toISO = (d: Date) => {
   return `${y}-${m}-${day}`
 }
 const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+// ✅ CHANGED — a same-year range only needs the year once, at the end
+// ("Jan 9 – Jan 10, 1974"); a range spanning two different years needs it on
+// both ends ("Jan 9, 1974 – Jan 10, 1978") so it isn't ambiguous.
+function fmtRange(from: string, to: string, sep = ' – ') {
+  if (from === to) return fmtLong(from)
+  return from.slice(0, 4) === to.slice(0, 4)
+    ? `${fmtShort(from)}${sep}${fmtLong(to)}`
+    : `${fmtLong(from)}${sep}${fmtLong(to)}`
+}
 
 // ── Module Filter — native combobox ────────────────────────────────
 function ModuleCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -112,6 +122,51 @@ function ModuleCombobox({ value, onChange }: { value: string; onChange: (v: stri
                 {m}
               </button>
             ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Sort order — same dropdown-combobox pattern as ModuleCombobox (button +
+// chevron + option menu) instead of a plain click-to-toggle button, so it
+// reads as clearly interactive/discoverable rather than a static label. ──
+function SortCombobox({ value, onChange }: { value: 'ASC' | 'DESC'; onChange: (v: 'ASC' | 'DESC') => void }) {
+  const [open, setOpen] = useState(false)
+  const label = value === 'ASC' ? 'Oldest activity' : 'Latest activity'
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(p => !p)}
+        className="flex items-center gap-2 pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+        {value === 'ASC'
+          ? <ArrowUpWideNarrow className="w-3.5 h-3.5 text-gray-400" />
+          : <ArrowDownWideNarrow className="w-3.5 h-3.5 text-gray-400" />}
+        {label}
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-1 left-0 w-40 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            <button type="button"
+              onClick={() => { onChange('DESC'); setOpen(false) }}
+              className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs transition-colors ${
+                value === 'DESC' ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+              }`}>
+              <ArrowDownWideNarrow className="w-3.5 h-3.5 text-gray-400" />
+              Latest activity
+            </button>
+            <button type="button"
+              onClick={() => { onChange('ASC'); setOpen(false) }}
+              className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs transition-colors ${
+                value === 'ASC' ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+              }`}>
+              <ArrowUpWideNarrow className="w-3.5 h-3.5 text-gray-400" />
+              Oldest activity
+            </button>
           </div>
         </>
       )}
@@ -356,7 +411,7 @@ function DateRangeModal({ from, to, onApply, onClose }: {
 
           <div>
             <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
-              Pick a date {tempFrom && tempTo ? (tempFrom === tempTo ? `— ${fmtShort(tempFrom)}` : `— ${fmtShort(tempFrom)} to ${fmtShort(tempTo)}`) : ''}
+              Pick a date {tempFrom && tempTo ? `— ${fmtRange(tempFrom, tempTo, ' to ')}` : ''}
             </div>
             <MiniCalendar from={tempFrom} to={tempTo} onChange={(f, t) => { setTempFrom(f); setTempTo(t) }} />
           </div>
@@ -383,8 +438,8 @@ function DateRangeButton({ from, to, onClick }: { from: string; to: string; onCl
   const label = !from && !to
     ? 'All dates'
     : from && to
-      ? (from === to ? fmtShort(from) : `${fmtShort(from)} – ${fmtShort(to)}`)
-      : from ? `From ${fmtShort(from)}` : `Until ${fmtShort(to)}`
+      ? fmtRange(from, to)
+      : from ? `From ${fmtLong(from)}` : `Until ${fmtLong(to)}`
 
   return (
     <button type="button" onClick={onClick}
@@ -564,6 +619,18 @@ export default function AdminLogsPage() {
         <ModuleCombobox
           value={moduleFilter}
           onChange={v => { setModuleFilter(v); setParams(p => ({ ...p, page: 1 })) }}
+        />
+
+        {/* ✅ CHANGED — moved ahead of the date range (was a plain
+            click-to-toggle button that looked like a static label, not
+            obviously interactive). Now a proper dropdown combobox matching
+            ModuleCombobox's pattern, labeled "Latest activity" / "Oldest
+            activity". Backend already supports SortBy/SortDirection
+            (ActivityLogFilterRequest, defaults to al.CreatedAt DESC) — this
+            just exposes it in the UI. */}
+        <SortCombobox
+          value={params.sortDirection === 'ASC' ? 'ASC' : 'DESC'}
+          onChange={v => setParams(p => ({ ...p, sortDirection: v, page: 1 }))}
         />
 
         {/* Date range — opens a centered modal, no dropdown */}

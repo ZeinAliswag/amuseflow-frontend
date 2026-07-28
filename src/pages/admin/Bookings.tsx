@@ -18,7 +18,20 @@ const toISO = (d: Date) => {
   const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0')
   return `${y}-${m}-${day}`
 }
+// ✅ CHANGED — added year so a filtered date range in a different year (e.g.
+// picking a past/future year in the calendar) doesn't render ambiguously as
+// just "Jan 9 – Jan 10" with no indication of which year.
 const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+// ✅ CHANGED — a same-year range only needs the year once, at the end
+// ("Jan 9 – Jan 10, 1974"); a range spanning two different years needs it on
+// both ends ("Jan 9, 1974 – Jan 10, 1978") so it isn't ambiguous.
+function fmtRange(from: string, to: string, sep = ' – ') {
+  if (from === to) return fmtLong(from)
+  return from.slice(0, 4) === to.slice(0, 4)
+    ? `${fmtShort(from)}${sep}${fmtLong(to)}`
+    : `${fmtLong(from)}${sep}${fmtLong(to)}`
+}
 
 // Formats a TimeOnly string ("10:20:00") into "10:20 AM"
 const fmtTime = (t?: string) => {
@@ -31,7 +44,7 @@ const fmtTime = (t?: string) => {
 function CallTimeBadge({ time, className = '' }: { time?: string; className?: string }) {
   if (!time) return null
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 font-semibold shadow-sm ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-semibold shadow-sm ${className}`}>
       <AlarmClock className="w-3.5 h-3.5" />
       Call time: {fmtTime(time)}
     </span>
@@ -372,7 +385,7 @@ function DateRangeModal({ from, to, onApply, onClose }: {
 
           <div>
             <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
-              Pick a date {tempFrom && tempTo ? (tempFrom === tempTo ? `— ${fmtShort(tempFrom)}` : `— ${fmtShort(tempFrom)} to ${fmtShort(tempTo)}`) : ''}
+              Pick a date {tempFrom && tempTo ? `— ${fmtRange(tempFrom, tempTo, ' to ')}` : ''}
             </div>
             <MiniCalendar from={tempFrom} to={tempTo} onChange={(f, t) => { setTempFrom(f); setTempTo(t) }} />
           </div>
@@ -399,8 +412,8 @@ function DateRangeButton({ from, to, onClick }: { from: string; to: string; onCl
   const label = !from && !to
     ? 'All dates'
     : from && to
-      ? (from === to ? fmtShort(from) : `${fmtShort(from)} – ${fmtShort(to)}`)
-      : from ? `From ${fmtShort(from)}` : `Until ${fmtShort(to)}`
+      ? fmtRange(from, to)
+      : from ? `From ${fmtLong(from)}` : `Until ${fmtLong(to)}`
 
   return (
     <button type="button" onClick={onClick}
@@ -533,6 +546,15 @@ export default function AdminBookingsPage() {
     finally { setActionLoading(false) }
   }
 
+  // ✅ CHANGED — was one click-to-read per row. Now matches an app-icon
+  // badge instead: opening the Bookings page bulk-marks EVERY unread
+  // booking as read in one shot (fires once on mount). The rows on THIS
+  // render still show their red "New" highlight from the data already
+  // fetched — it's the sidebar badge (and any later refetch) that clears.
+  useEffect(() => {
+    api.put('/api/booking/mark-all-read').catch(() => {})
+  }, [])
+
   return (
     <div className="p-4 sm:p-6 space-y-5">
       {/* Header */}
@@ -595,7 +617,11 @@ export default function AdminBookingsPage() {
           <>
             <div className="divide-y divide-gray-300">
               {bookings.map(b => (
-                <div key={b.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 hover:bg-gray-50/60 transition-colors group">
+                <div key={b.id}
+                  className={`relative flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 transition-colors group ${
+                    !b.isRead ? 'bg-red-50/60' : 'hover:bg-gray-50/60'
+                  }`}>
+                  {!b.isRead && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-red-500" />}
                   <div className="flex items-center gap-3 sm:contents">
                     {/* Avatar */}
                     <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
@@ -604,7 +630,12 @@ export default function AdminBookingsPage() {
 
                     {/* Visitor + booking code */}
                     <div className="flex-1 sm:w-40 sm:flex-shrink-0 min-w-0">
-                      <div className="font-semibold text-gray-900 text-sm truncate">{b.visitorName}</div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="font-semibold text-gray-900 text-sm truncate">{b.visitorName}</div>
+                        {!b.isRead && (
+                          <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold uppercase tracking-wide">New</span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-gray-400">@{b.visitorUsername}</div>
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         <span className="font-mono text-xs text-gray-700 bg-gray-200 px-2 py-1 rounded font-semibold">{maskCode(b.bookingCode)}</span>

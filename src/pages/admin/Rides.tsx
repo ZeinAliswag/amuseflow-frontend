@@ -444,10 +444,20 @@ export default function AdminRidesPage() {
                             className="flex items-center justify-center w-8 h-8 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-xl transition-all">
                             <Pencil className="w-4 h-4" />
                           </button>
-                          <button onClick={() => setDeleteTarget(ride)} title="Delete ride"
-                            className="flex items-center justify-center w-8 h-8 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-xl transition-all">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {/* ✅ NEW — disabled while the ride has an open,
+                              upcoming, or ongoing schedule, mirroring the
+                              same rule enforced server-side. */}
+                          {ride.hasActiveSchedule ? (
+                            <button disabled title="This ride has an open, upcoming, or ongoing schedule — it can't be deleted until that schedule is cancelled or completes."
+                              className="flex items-center justify-center w-8 h-8 bg-gray-50 text-gray-300 border border-gray-200 rounded-xl cursor-not-allowed">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <button onClick={() => setDeleteTarget(ride)} title="Delete ride"
+                              className="flex items-center justify-center w-8 h-8 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-xl transition-all">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>

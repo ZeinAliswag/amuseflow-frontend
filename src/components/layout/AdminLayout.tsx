@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Ticket, Users, ClipboardList,
   Calendar, LogOut, ChevronDown, Menu, X,
-  FerrisWheel, Loader2, BadgePercent
+  FerrisWheel, Loader2, BadgePercent, Bell
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import api from '../../services/api'
@@ -22,12 +22,13 @@ const navItems: NavItem[] = [
   { to: '/admin/promos',    icon: <BadgePercent className="w-5 h-5" />,    label: 'Ride Promos' },
   { to: '/admin/schedules', icon: <Calendar className="w-5 h-5" />,        label: 'Schedules' },
   { to: '/admin/bookings',  icon: <Ticket className="w-5 h-5" />,          label: 'Bookings' },
+  { to: '/admin/notifications', icon: <Bell className="w-5 h-5" />,       label: 'Notifications' },
   { to: '/admin/users',     icon: <Users className="w-5 h-5" />,           label: 'Users' },
   { to: '/admin/logs',      icon: <ClipboardList className="w-5 h-5" />,   label: 'Activity Logs' },
 ]
 
-// How often to re-check the pending bookings count, in milliseconds.
-const PENDING_POLL_INTERVAL = 5_000
+// How often to re-check the unread bookings count, in milliseconds.
+const UNREAD_POLL_INTERVAL = 5_000
 
 // ── Logout Confirm Modal — same "are you sure" pattern used on the
 // Visitor/Attendant portals (PortalHeader.tsx), now on the Admin side too. ──
@@ -63,7 +64,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
-  const [pendingCount, setPendingCount] = useState(0)
+  // ✅ CHANGED — this used to be "pendingCount", computed via a broken
+  // `search: 'Pending'` free-text query (which searches ride/visitor/code
+  // text, not the Status column, so it rarely matched anything real). Now
+  // shows the actual count of unread bookings — like an Instagram app-icon
+  // badge — and clears in one shot when the admin opens the Bookings page
+  // (see Bookings.tsx's mark-all-read call), not one row at a time.
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  // ✅ NEW — system-wide unread notification count (every recipient, not
+  // just this admin's own), backing the Notifications nav badge — same
+  // Instagram-style pattern as the Bookings badge above.
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0)
 
   // ✅ NEW — logout now goes through a confirm modal instead of firing
   // immediately on click, so a stray/mis-click doesn't sign the admin out.
@@ -71,16 +83,29 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
-    fetchPendingCount()
-    const interval = setInterval(fetchPendingCount, PENDING_POLL_INTERVAL)
+    fetchUnreadCount()
+    fetchUnreadNotifCount()
+    const interval = setInterval(() => { fetchUnreadCount(); fetchUnreadNotifCount() }, UNREAD_POLL_INTERVAL)
     return () => clearInterval(interval)
   }, [])
 
-  const fetchPendingCount = async () => {
+  const fetchUnreadCount = async () => {
     try {
-      const res = await api.get('/api/booking', { params: { page: 1, pageSize: 1, search: 'Pending' } })
-      const pg = res.data?.data?.pagination ?? res.data?.pagination
-      setPendingCount(pg?.totalCount ?? 0)
+      const res = await api.get('/api/booking/unread-count')
+      setUnreadCount(res.data?.data ?? 0)
+    } catch {}
+  }
+
+  const fetchUnreadNotifCount = async () => {
+    try {
+      // ✅ FIXED — the Notifications page this badge links to shows ONLY
+      // "Booking cancelled" entries (cancellations-only feed), but this was
+      // fetching the true system-wide unread count across every
+      // notification type/recipient. That mismatch meant the sidebar could
+      // show e.g. "3" while the page itself had nothing unread to show.
+      // Scoped with cancelledOnly so the two always agree.
+      const res = await api.get('/api/notification/all/unread-count', { params: { cancelledOnly: true } })
+      setUnreadNotifCount(res.data?.data ?? 0)
     } catch {}
   }
 
@@ -147,10 +172,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             >
               {item.icon}
               <span className="flex-1">{item.label}</span>
-              {item.to === '/admin/bookings' && pendingCount > 0 && (
+              {item.to === '/admin/bookings' && unreadCount > 0 && (
                 <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full
                   bg-red-500 text-white text-[11px] font-bold leading-none flex-shrink-0">
-                  {pendingCount > 99 ? '99+' : pendingCount}
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+              {item.to === '/admin/notifications' && unreadNotifCount > 0 && (
+                <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full
+                  bg-red-500 text-white text-[11px] font-bold leading-none flex-shrink-0">
+                  {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
                 </span>
               )}
             </NavLink>

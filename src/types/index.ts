@@ -74,6 +74,11 @@ export interface Ride {
   price: number
   imagePath?: string
   isDeleted: boolean
+  // ✅ NEW — true while this ride has at least one Open or Full schedule
+  // (upcoming, still-open-today, or currently in progress). Backend also
+  // enforces this on delete (RideService.DeleteAsync) — this just lets the
+  // UI disable the button proactively instead of surfacing a toast error.
+  hasActiveSchedule: boolean
   createdAt: string
   updatedAt: string
 }
@@ -178,6 +183,10 @@ export interface Booking {
   paidAt?: string
   bookedAt: string
   notes?: string
+
+  // ✅ NEW — false until the admin views/clicks this booking (or its latest
+  // status/payment change) in the Admin Bookings list.
+  isRead: boolean
 }
 
 // ── User ──────────────────────────────────────────────────────
@@ -209,6 +218,25 @@ export interface ActivityLog {
   // log entry; used by the admin Logs page's role filter/badges and by
   // the Visitor/Ride Attendant portal's "Activity logs" panel.
   role?: string
+}
+
+// ── Notification (per-user, IsRead-tracked) ────────────────────
+// Created directly by the backend services (Booking/Schedule) — distinct
+// from ActivityLog: scoped to one recipient, and tracked read/unread
+// instead of being a shared audit trail everyone can see.
+export interface Notification {
+  id: number
+  module: string        // Booking | Schedule
+  title: string
+  message: string
+  relatedId?: number     // BookingId or ScheduleId
+  isRead: boolean
+  createdAt: string
+
+  // ✅ NEW — populated only on the admin-wide list (GET /api/notification/all).
+  recipientName?: string
+  recipientUsername?: string
+  recipientRole?: string
 }
 
 // ── Dashboard ─────────────────────────────────────────────────
