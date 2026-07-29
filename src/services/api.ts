@@ -98,7 +98,10 @@ export const promoApi = {
 // ✅ CHANGED — schedules are now locked in by the admin at promo-creation
 // time, so booking a promo only needs the promoId.
 export const bookingApi = {
-  bookPromo: (payload: { promoId: number }) =>
+  // ✅ CHANGED — group bookings: an optional guest list travels alongside
+  // promoId, same shape/rules as a regular ride booking. Omit/empty
+  // defaults to one guest named after the visitor (handled server-side).
+  bookPromo: (payload: { promoId: number; guests?: { guestName: string; ageYears?: number; heightCm?: number; weightKg?: number }[] }) =>
     api.post('/api/booking/promo', payload),
 }
 

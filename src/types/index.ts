@@ -73,6 +73,16 @@ export interface Ride {
   durationMinutes: number
   price: number
   imagePath?: string
+  // ✅ NEW — optional restrictions enforced per guest at booking time.
+  // Height can now be a range (e.g. 100–180) instead of just a floor.
+  minHeightCm?: number
+  maxHeightCm?: number
+  minAgeYears?: number
+  // ✅ NEW — age can now be a range (e.g. 24–50) instead of just a floor.
+  maxAgeYears?: number
+  // ✅ NEW — optional weight range restriction, same min/max pattern as age.
+  minWeightKg?: number
+  maxWeightKg?: number
   isDeleted: boolean
   // ✅ NEW — true while this ride has at least one Open or Full schedule
   // (upcoming, still-open-today, or currently in progress). Backend also
@@ -119,6 +129,16 @@ export interface PromoRideItem {
   availableSlots: number
   maxSlots: number
   scheduleStatus: string
+
+  // ✅ NEW — this ride's own optional restrictions, carried along so a
+  // promo booking can be validated against EVERY ride bundled in it (a
+  // guest must qualify for all of them, not just one). Same fields as Ride.
+  minHeightCm?: number
+  maxHeightCm?: number
+  minAgeYears?: number
+  maxAgeYears?: number
+  minWeightKg?: number
+  maxWeightKg?: number
 }
 
 export interface RidePromo {
@@ -153,6 +173,18 @@ export interface BookingPromoItem {
   endTime: string
 }
 
+// One guest/seat included in a booking (group bookings) — a plain
+// single-seat booking still has exactly one of these, defaulting to the
+// visitor's own name.
+export interface BookingGuest {
+  id: number
+  guestName: string
+  ageYears?: number
+  heightCm?: number
+  // ✅ NEW — validated against the ride's optional Min/MaxWeightKg range.
+  weightKg?: number
+}
+
 // ── Booking ───────────────────────────────────────────────────
 export interface Booking {
   id: number
@@ -175,6 +207,9 @@ export interface Booking {
   promoName?: string
   promoImagePath?: string
   includedRides?: BookingPromoItem[]
+
+  // ✅ NEW — group bookings: one entry per guest/seat under this booking.
+  guests?: BookingGuest[]
 
   bookingCode: string
   status: string

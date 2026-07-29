@@ -557,6 +557,27 @@ function RosterModal({ schedule, bookings, loading, onClose, onZoom }: {
                               </span>
                             )}
                           </div>
+                          {/* ✅ CHANGED — one ticket per booking (1:1): the
+                              guest riding isn't always the visitor account
+                              holder, so always show the guest's own name
+                              (was gated behind "> 1 guest" from the old
+                              group-booking feature, which made this never
+                              show now that every booking has exactly one). */}
+                          {(b.guests?.length ?? 0) > 0 && (
+                            <div className="mt-1 flex items-center gap-1 flex-wrap">
+                              <Users className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                              {b.guests!.map(g => (
+                                <span key={g.id} className="text-[10px] text-gray-600 bg-white border border-gray-200 rounded-full px-1.5 py-0.5">
+                                  {g.guestName}
+                                  {(g.heightCm != null || g.ageYears != null || g.weightKg != null) && (
+                                    <span className="text-gray-400">
+                                      {' '}({[g.heightCm != null ? `${g.heightCm}cm` : null, g.weightKg != null ? `${g.weightKg}kg` : null, g.ageYears != null ? `${g.ageYears}y` : null].filter(Boolean).join(', ')})
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           {rosterBadge(b.status)}
@@ -587,6 +608,24 @@ function RosterModal({ schedule, bookings, loading, onClose, onZoom }: {
                               {maskCode(b.bookingCode)}
                             </span>
                           </div>
+                          {/* ✅ CHANGED — one ticket per booking (1:1): always
+                              show the guest's own name (was gated behind
+                              "> 1 guest" from the old group-booking feature). */}
+                          {(b.guests?.length ?? 0) > 0 && (
+                            <div className="mt-1 flex items-center gap-1 flex-wrap">
+                              <Users className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                              {b.guests!.map(g => (
+                                <span key={g.id} className="text-[10px] text-gray-600 bg-white border border-gray-200 rounded-full px-1.5 py-0.5">
+                                  {g.guestName}
+                                  {(g.heightCm != null || g.ageYears != null || g.weightKg != null) && (
+                                    <span className="text-gray-400">
+                                      {' '}({[g.heightCm != null ? `${g.heightCm}cm` : null, g.weightKg != null ? `${g.weightKg}kg` : null, g.ageYears != null ? `${g.ageYears}y` : null].filter(Boolean).join(', ')})
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           {rosterBadge(b.status)}
@@ -986,6 +1025,35 @@ export function AttendantDashboard() {
                       <p className={`font-semibold ${verifiedBooking.paymentStatus === 'Paid' ? 'text-green-700' : 'text-amber-700'}`}>
                         {verifiedBooking.paymentStatus}
                       </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* ✅ CHANGED — one ticket per booking (1:1): the guest riding
+                    isn't always the visitor account holder (e.g. a parent
+                    booking on behalf of their father/child), so always show
+                    the guest's own name here (plus age/height/weight, when
+                    the ride restricts any of those) — was gated behind
+                    "> 1 guest" from the old group-booking feature, which
+                    made it never show now that every booking has exactly
+                    one guest. */}
+                {(verifiedBooking.guests?.length ?? 0) > 0 && (
+                  <div className="bg-white/70 rounded-xl p-2.5 text-xs mb-3">
+                    <p className="text-gray-500 mb-1.5 flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5" />
+                      {verifiedBooking.guests!.length > 1 ? `Party (${verifiedBooking.guests!.length})` : 'Reservation details'}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {verifiedBooking.guests!.map(g => (
+                        <span key={g.id} className="text-[11px] text-gray-700 bg-white border border-gray-200 rounded-full px-2 py-1">
+                          {g.guestName}
+                          {(g.heightCm != null || g.ageYears != null || g.weightKg != null) && (
+                            <span className="text-gray-400">
+                              {' '}({[g.heightCm != null ? `${g.heightCm}cm` : null, g.weightKg != null ? `${g.weightKg}kg` : null, g.ageYears != null ? `${g.ageYears}y` : null].filter(Boolean).join(', ')})
+                            </span>
+                          )}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 )}
