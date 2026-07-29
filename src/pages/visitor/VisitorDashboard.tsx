@@ -81,6 +81,7 @@ interface Schedule {
 
 // ── Confirm Modal ──────────────────────────────────────────────
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const WEEKDAYS = ['Su','Mo','Tu','We','Th','Fr','Sa']
 
 // ── Call time badge — styled like a notification chip (pill background +
 // border) instead of plain colored text, so it actually draws the eye. ──
@@ -252,6 +253,179 @@ function Badge({ label }: { label: string }) {
   return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${map[label] ?? 'bg-gray-100 text-gray-600'}`}>{label}</span>
 }
 
+// ── Month/Year dropdown for the mini calendar below — jump straight to any
+// month or year, matching the pattern used elsewhere in the app. ──
+function MiniMonthYearDropdown({ year, month, onChange, onClose }: {
+  year: number; month: number
+  onChange: (year: number, month: number) => void
+  onClose: () => void
+}) {
+  const [viewYear, setViewYear] = useState(year)
+  const today = new Date()
+
+  return (
+    <>
+      <div className="fixed inset-0 z-30" onClick={onClose} />
+      <div className="absolute z-40 mt-2 left-1/2 -translate-x-1/2 w-72 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <button type="button" onClick={() => setViewYear(y => y - 1)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="font-bold text-gray-900 text-sm">{viewYear}</span>
+          <button type="button" onClick={() => setViewYear(y => y + 1)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-2 p-4">
+          {MONTHS.map((m, i) => {
+            const isSelected = viewYear === year && i === month
+            const isCurrent = viewYear === today.getFullYear() && i === today.getMonth()
+            return (
+              <button key={m} type="button"
+                onClick={() => { onChange(viewYear, i); onClose() }}
+                className={`py-2 rounded-xl text-xs font-medium transition-colors ${
+                  isSelected
+                    ? 'bg-slate-700 text-white shadow-sm'
+                    : isCurrent
+                    ? 'bg-slate-50 text-slate-700 border border-slate-200'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}>
+                {m}
+              </button>
+            )
+          })}
+        </div>
+        <div className="px-4 pb-4">
+          <button type="button"
+            onClick={() => { onChange(today.getFullYear(), today.getMonth()); onClose() }}
+            className="w-full py-2 rounded-xl text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
+            Jump to today
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── Mini calendar grid — replaces plain native <input type="date"> fields
+// (which pop the browser's own mismatched-looking date picker) with a
+// custom-styled range picker matching the rest of the app. ──
+function MiniCalendar({ from, to, onChange }: {
+  from: string; to: string
+  onChange: (from: string, to: string) => void
+}) {
+  const base = from ? new Date(from + 'T00:00:00') : new Date()
+  const [viewMonth, setViewMonth] = useState(base.getMonth())
+  const [viewYear, setViewYear]   = useState(base.getFullYear())
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const todayISO = toISO(new Date())
+
+  const monthLabel = new Date(viewYear, viewMonth).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })
+  const firstWeekday = new Date(viewYear, viewMonth, 1).getDay()
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
+
+  const cells: (number | null)[] = [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+
+  const dateISO = (d: number) => toISO(new Date(viewYear, viewMonth, d))
+
+  const gotoPrev = () => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1) } else setViewMonth(m => m - 1) }
+  const gotoNext = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1) } else setViewMonth(m => m + 1) }
+
+  const handlePick = (d: number) => {
+    const iso = dateISO(d)
+    if (!from || (from && to)) {
+      onChange(iso, '')
+    } else {
+      onChange(iso < from ? iso : from, iso < from ? from : iso)
+    }
+  }
+
+  const gotoToday = () => {
+    const t = new Date()
+    setViewMonth(t.getMonth()); setViewYear(t.getFullYear())
+    onChange(todayISO, todayISO)
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-4">
+      {/* Month header */}
+      <div className="flex items-center justify-between mb-3">
+        <button type="button" onClick={gotoPrev}
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <div className="relative">
+          <button type="button" onClick={() => setPickerOpen(p => !p)}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors">
+            <Calendar className="w-3.5 h-3.5 text-gray-400" />
+            <span className="text-sm font-bold text-gray-900">{monthLabel}</span>
+            <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${pickerOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {pickerOpen && (
+            <MiniMonthYearDropdown
+              year={viewYear} month={viewMonth}
+              onChange={(y, m) => { setViewYear(y); setViewMonth(m) }}
+              onClose={() => setPickerOpen(false)}
+            />
+          )}
+        </div>
+        <button type="button" onClick={gotoNext}
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Weekday header */}
+      <div className="grid grid-cols-7 mb-1">
+        {WEEKDAYS.map(w => (
+          <div key={w} className="text-[10px] font-semibold text-gray-400 text-center py-1">{w}</div>
+        ))}
+      </div>
+
+      {/* Day grid */}
+      <div className="grid grid-cols-7 gap-y-1">
+        {cells.map((d, i) => {
+          if (d === null) return <div key={`empty-${i}`} />
+          const iso = dateISO(d)
+          const isStart = iso === from
+          const isEnd = iso === to
+          const inRange = !!from && !!to && iso > from && iso < to
+          const isToday = iso === todayISO
+          return (
+            <div key={iso} className="flex items-center justify-center">
+              <button type="button" onClick={() => handlePick(d)}
+                className={`w-8 h-8 flex items-center justify-center text-xs rounded-full transition-colors ${
+                  isStart || isEnd
+                    ? 'bg-slate-700 text-white font-bold shadow-sm'
+                    : inRange
+                    ? 'bg-slate-100 text-slate-700 font-medium'
+                    : isToday
+                    ? 'border border-gray-400 text-gray-700 font-semibold'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}>
+                {d}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Footer — single full-width pill, matching the app's other pickers */}
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <button type="button" onClick={gotoToday}
+          className="w-full py-2.5 rounded-full text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">
+          Jump to today
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Date Range Modal (centered dialog) ─────────────────────────
 function DateRangeModal({ from, to, onApply, onClose }: {
   from: string; to: string
@@ -309,14 +483,10 @@ function DateRangeModal({ from, to, onApply, onClose }: {
           </div>
 
           <div>
-            <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Custom range</div>
-            <div className="flex items-center gap-2">
-              <input type="date" value={tempFrom} onChange={e => setTempFrom(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-300" />
-              <span className="text-[10px] text-gray-400">to</span>
-              <input type="date" value={tempTo} onChange={e => setTempTo(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-300" />
+            <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+              Pick a date {tempFrom && tempTo ? `— ${fmtRange(tempFrom, tempTo, ' to ')}` : ''}
             </div>
+            <MiniCalendar from={tempFrom} to={tempTo} onChange={(f, t) => { setTempFrom(f); setTempTo(t) }} />
           </div>
         </div>
 

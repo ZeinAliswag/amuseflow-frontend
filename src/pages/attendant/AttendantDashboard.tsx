@@ -3,7 +3,7 @@ import {
   Scan, CheckCircle2, Calendar, Clock, Users, AlertCircle, XCircle,
   Wallet, Loader2, Ticket, ChevronRight, ChevronLeft, ChevronDown, Sparkles, ClipboardCheck,
 TrendingUp, X, ZoomIn, AlarmClock,
-  FerrisWheel, Tag
+  FerrisWheel, Tag, CalendarDays
 } from 'lucide-react'
 import type { Schedule, Booking, PagedResponse, PaginationRequest } from '../../types'
 import api from '../../services/api'
@@ -12,8 +12,23 @@ import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const WEEKDAYS = ['Su','Mo','Tu','We','Th','Fr','Sa']
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
+
+// ── Date-range filter helpers — same pattern as Admin Bookings/Promos/Logs ──
+const toISO = (d: Date) => {
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0')
+  return `${y}-${m}-${day}`
+}
+const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+function fmtRange(from: string, to: string, sep = ' – ') {
+  if (from === to) return fmtLong(from)
+  return from.slice(0, 4) === to.slice(0, 4)
+    ? `${fmtShort(from)}${sep}${fmtLong(to)}`
+    : `${fmtLong(from)}${sep}${fmtLong(to)}`
+}
 
 function getImageUrl(path?: string) {
   if (!path) return null
@@ -182,6 +197,274 @@ function MonthYearPicker({ month, year, onChange, accent = 'indigo' }: {
         </>
       )}
     </div>
+  )
+}
+
+// ── Month/Year dropdown for the mini calendar below — jump straight to any
+// month or year, same pattern as Admin Bookings/Promos/Logs. ──
+function MiniMonthYearDropdown({ year, month, onChange, onClose }: {
+  year: number; month: number
+  onChange: (year: number, month: number) => void
+  onClose: () => void
+}) {
+  const [viewYear, setViewYear] = useState(year)
+  const today = new Date()
+
+  return (
+    <>
+      <div className="fixed inset-0 z-30" onClick={onClose} />
+      <div className="absolute z-40 mt-2 left-1/2 -translate-x-1/2 w-72 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <button type="button" onClick={() => setViewYear(y => y - 1)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="font-bold text-gray-900 text-sm">{viewYear}</span>
+          <button type="button" onClick={() => setViewYear(y => y + 1)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-2 p-4">
+          {MONTHS.map((m, i) => {
+            const isSelected = viewYear === year && i === month
+            const isCurrent = viewYear === today.getFullYear() && i === today.getMonth()
+            return (
+              <button key={m} type="button"
+                onClick={() => { onChange(viewYear, i); onClose() }}
+                className={`py-2 rounded-xl text-xs font-medium transition-colors ${
+                  isSelected
+                    ? 'bg-gray-800 text-white shadow-sm'
+                    : isCurrent
+                    ? 'bg-gray-100 text-gray-700 border border-gray-200'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}>
+                {m}
+              </button>
+            )
+          })}
+        </div>
+        <div className="px-4 pb-4">
+          <button type="button"
+            onClick={() => { onChange(today.getFullYear(), today.getMonth()); onClose() }}
+            className="w-full py-2 rounded-xl text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
+            Jump to today
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function MiniCalendar({ from, to, onChange }: {
+  from: string; to: string
+  onChange: (from: string, to: string) => void
+}) {
+  const base = from ? new Date(from + 'T00:00:00') : new Date()
+  const [viewMonth, setViewMonth] = useState(base.getMonth())
+  const [viewYear, setViewYear]   = useState(base.getFullYear())
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const todayISO = toISO(new Date())
+
+  const monthLabel = new Date(viewYear, viewMonth).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })
+  const firstWeekday = new Date(viewYear, viewMonth, 1).getDay()
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
+
+  const cells: (number | null)[] = [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+
+  const dateISO = (d: number) => toISO(new Date(viewYear, viewMonth, d))
+
+  const gotoPrev = () => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1) } else setViewMonth(m => m - 1) }
+  const gotoNext = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1) } else setViewMonth(m => m + 1) }
+
+  const handlePick = (d: number) => {
+    const iso = dateISO(d)
+    if (!from || (from && to)) {
+      onChange(iso, '')
+    } else {
+      onChange(iso < from ? iso : from, iso < from ? from : iso)
+    }
+  }
+
+  const gotoToday = () => {
+    const t = new Date()
+    setViewMonth(t.getMonth()); setViewYear(t.getFullYear())
+    onChange(todayISO, todayISO)
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-4">
+      {/* Month header */}
+      <div className="flex items-center justify-between mb-3">
+        <button type="button" onClick={gotoPrev}
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <div className="relative">
+          <button type="button" onClick={() => setPickerOpen(p => !p)}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors">
+            <Calendar className="w-3.5 h-3.5 text-gray-400" />
+            <span className="text-sm font-bold text-gray-900">{monthLabel}</span>
+            <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${pickerOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {pickerOpen && (
+            <MiniMonthYearDropdown
+              year={viewYear} month={viewMonth}
+              onChange={(y, m) => { setViewYear(y); setViewMonth(m) }}
+              onClose={() => setPickerOpen(false)}
+            />
+          )}
+        </div>
+        <button type="button" onClick={gotoNext}
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Weekday header */}
+      <div className="grid grid-cols-7 mb-1">
+        {WEEKDAYS.map(w => (
+          <div key={w} className="text-[10px] font-semibold text-gray-400 text-center py-1">{w}</div>
+        ))}
+      </div>
+
+      {/* Day grid */}
+      <div className="grid grid-cols-7 gap-y-1">
+        {cells.map((d, i) => {
+          if (d === null) return <div key={`empty-${i}`} />
+          const iso = dateISO(d)
+          const isStart = iso === from
+          const isEnd = iso === to
+          const inRange = !!from && !!to && iso > from && iso < to
+          const isToday = iso === todayISO
+          return (
+            <div key={iso} className="flex items-center justify-center">
+              <button type="button" onClick={() => handlePick(d)}
+                className={`w-8 h-8 flex items-center justify-center text-xs rounded-full transition-colors ${
+                  isStart || isEnd
+                    ? 'bg-gray-800 text-white font-bold shadow-sm'
+                    : inRange
+                    ? 'bg-gray-100 text-gray-700 font-medium'
+                    : isToday
+                    ? 'border border-gray-400 text-gray-700 font-semibold'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}>
+                {d}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Footer — single full-width pill, matching the app's other pickers */}
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <button type="button" onClick={gotoToday}
+          className="w-full py-2.5 rounded-full text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">
+          Jump to today
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Date Range Modal (centered dialog, real calendar grid) — same pattern
+// as Admin Bookings/Promos/Logs' "Filter by date." ──
+function DateRangeModal({ from, to, onApply, onClose }: {
+  from: string; to: string
+  onApply: (from: string, to: string) => void
+  onClose: () => void
+}) {
+  const [tempFrom, setTempFrom] = useState(from)
+  const [tempTo, setTempTo] = useState(to)
+  const today = new Date()
+
+  const presets = [
+    { label: 'Today', get: () => { const d = toISO(today); return [d, d] as [string,string] } },
+    { label: 'Yesterday', get: () => { const d = new Date(today); d.setDate(d.getDate()-1); const s = toISO(d); return [s, s] as [string,string] } },
+    { label: 'Last 7 days', get: () => { const s = new Date(today); s.setDate(s.getDate()-6); return [toISO(s), toISO(today)] as [string,string] } },
+    { label: 'Last 30 days', get: () => { const s = new Date(today); s.setDate(s.getDate()-29); return [toISO(s), toISO(today)] as [string,string] } },
+    { label: 'This month', get: () => { const s = new Date(today.getFullYear(), today.getMonth(), 1); return [toISO(s), toISO(today)] as [string,string] } },
+  ]
+
+  const isActivePreset = (f: string, t: string) => tempFrom === f && tempTo === t
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center">
+              <CalendarDays className="w-5 h-5 text-gray-600" />
+            </div>
+            <div className="font-semibold text-gray-900 text-[14px]">Filter by date</div>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Quick select</div>
+            <div className="grid grid-cols-2 gap-2">
+              {presets.map(p => {
+                const [f, t] = p.get()
+                const active = isActivePreset(f, t)
+                return (
+                  <button key={p.label} type="button"
+                    onClick={() => { setTempFrom(f); setTempTo(t) }}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left ${
+                      active ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                    }`}>
+                    {p.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+              Pick a date {tempFrom && tempTo ? `— ${fmtRange(tempFrom, tempTo, ' to ')}` : ''}
+            </div>
+            <MiniCalendar from={tempFrom} to={tempTo} onChange={(f, t) => { setTempFrom(f); setTempTo(t) }} />
+          </div>
+        </div>
+
+        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3">
+          <button type="button" onClick={() => { setTempFrom(''); setTempTo('') }}
+            className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
+            Clear
+          </button>
+          <button type="button" onClick={() => { onApply(tempFrom, tempTo); onClose() }}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-gray-800 hover:bg-gray-900 transition-colors">
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Date Range Trigger Button — same look as Admin Bookings/Promos/Logs ──
+function DateRangeButton({ from, to, onClick }: { from: string; to: string; onClick: () => void }) {
+  const label = !from && !to
+    ? 'All dates'
+    : from && to
+      ? fmtRange(from, to)
+      : from ? `From ${fmtLong(from)}` : `Until ${fmtLong(to)}`
+
+  return (
+    <button type="button" onClick={onClick}
+      className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-gray-100 transition-colors border border-gray-200 bg-white">
+      <CalendarDays className="w-4 h-4 text-gray-400" />
+      <span className="text-xs font-bold text-gray-900">{label}</span>
+      <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+    </button>
   )
 }
 
@@ -494,7 +777,15 @@ export function AttendantDashboard() {
   // ── Month + status filters for assigned schedules ──────────────
   const [filterMonth, setFilterMonth] = useState(now.getMonth())
   const [filterYear, setFilterYear]   = useState(now.getFullYear())
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Open' | 'Full' | 'Completed'>('All')
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Open' | 'Full' | 'Completed' | 'Cancelled'>('All')
+
+  // ── Date-range filter (independent of the month picker above) — narrows
+  // the assigned-schedules list to an exact date range, same "Filter by
+  // date" pattern used on Admin Bookings/Promos/Logs. Leave both empty to
+  // fall back to whatever month is selected above.
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo]     = useState('')
+  const [dateModalOpen, setDateModalOpen] = useState(false)
 
   const monthFilteredSchedules = schedules.filter(s => {
     if (!s.scheduleDate) return false
@@ -502,15 +793,28 @@ export function AttendantDashboard() {
     return d.getMonth() === filterMonth && d.getFullYear() === filterYear
   })
 
-  const displaySchedules = statusFilter === 'All'
-    ? monthFilteredSchedules
-    : monthFilteredSchedules.filter(s => s.status === statusFilter)
+  const dateRangeFilteredSchedules = (dateFrom || dateTo) ? schedules.filter(s => {
+    if (!s.scheduleDate) return false
+    return (!dateFrom || s.scheduleDate >= dateFrom) && (!dateTo || s.scheduleDate <= dateTo)
+  }) : monthFilteredSchedules
 
+  const displaySchedules = statusFilter === 'All'
+    ? dateRangeFilteredSchedules
+    : dateRangeFilteredSchedules.filter(s => s.status === statusFilter)
+
+  // Stat cards at the top always reflect the selected month, regardless of
+  // the date-range filter below (which only narrows the schedules list).
   const openCount = monthFilteredSchedules.filter(s => s.status === 'Open').length
-  const fullCount = monthFilteredSchedules.filter(s => s.status === 'Full').length
-  const completedCount = monthFilteredSchedules.filter(s => s.status === 'Completed').length
   const totalSlots = monthFilteredSchedules.reduce((sum, s) => sum + (s.maxSlots ?? 0), 0)
   const filledSlots = monthFilteredSchedules.reduce((sum, s) => sum + ((s.maxSlots ?? 0) - (s.availableSlots ?? 0)), 0)
+
+  // Status-chip counts reflect whatever is currently in view (date range if
+  // set, otherwise the selected month) so the numbers next to each chip
+  // always match what filtering by that chip will actually show.
+  const chipOpenCount = dateRangeFilteredSchedules.filter(s => s.status === 'Open').length
+  const chipFullCount = dateRangeFilteredSchedules.filter(s => s.status === 'Full').length
+  const chipCompletedCount = dateRangeFilteredSchedules.filter(s => s.status === 'Completed').length
+  const chipCancelledCount = dateRangeFilteredSchedules.filter(s => s.status === 'Cancelled').length
 
   const monthLabel = new Date(filterYear, filterMonth).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })
 
@@ -790,22 +1094,36 @@ export function AttendantDashboard() {
             </div>
           </div>
 
-          {/* Status filter chips */}
-          <div className="px-5 py-2.5 border-b border-gray-50 flex items-center gap-1 bg-gray-50/50 flex-wrap">
-            {(['All', 'Open', 'Full', 'Completed'] as const).map(s => (
-              <button key={s} onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                  statusFilter === s
-                    ? s === 'Open' ? 'bg-green-500 text-white'
-                    : s === 'Full' ? 'bg-red-500 text-white'
-                    : s === 'Completed' ? 'bg-blue-500 text-white'
-                    : 'bg-gray-800 text-white'
-                    : 'text-gray-500 hover:bg-gray-200'
-                }`}>
-                {s}
-                {s !== 'All' && ` (${s === 'Open' ? openCount : s === 'Full' ? fullCount : completedCount})`}
-              </button>
-            ))}
+          {/* Status filter chips + date range filter */}
+          <div className="px-5 py-2.5 border-b border-gray-50 flex items-center justify-between gap-2 bg-gray-50/50 flex-wrap">
+            <div className="flex items-center gap-1 flex-wrap">
+              {(['All', 'Open', 'Full', 'Completed', 'Cancelled'] as const).map(s => (
+                <button key={s} onClick={() => setStatusFilter(s)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                    statusFilter === s
+                      ? s === 'Open' ? 'bg-green-500 text-white'
+                      : s === 'Full' ? 'bg-red-500 text-white'
+                      : s === 'Completed' ? 'bg-blue-500 text-white'
+                      : s === 'Cancelled' ? 'bg-slate-700 text-white'
+                      : 'bg-gray-800 text-white'
+                      : 'text-gray-500 hover:bg-gray-200'
+                  }`}>
+                  {s}
+                  {s !== 'All' && ` (${
+                    s === 'Open' ? chipOpenCount
+                    : s === 'Full' ? chipFullCount
+                    : s === 'Completed' ? chipCompletedCount
+                    : chipCancelledCount
+                  })`}
+                </button>
+              ))}
+            </div>
+
+            {/* Date range — narrows the list independently of the month picker above */}
+            <DateRangeButton
+              from={dateFrom} to={dateTo}
+              onClick={() => setDateModalOpen(true)}
+            />
           </div>
 
           {loading ? (
@@ -877,6 +1195,14 @@ export function AttendantDashboard() {
       )}
 
       {zoomSrc && <ImageZoom src={zoomSrc} onClose={() => setZoomSrc(null)} />}
+
+      {dateModalOpen && (
+        <DateRangeModal
+          from={dateFrom} to={dateTo}
+          onApply={(f, t) => { setDateFrom(f); setDateTo(t) }}
+          onClose={() => setDateModalOpen(false)}
+        />
+      )}
     </div>
   )
 }
