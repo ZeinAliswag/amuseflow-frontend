@@ -105,6 +105,15 @@ export const bookingApi = {
     api.post('/api/booking/promo', payload),
 }
 
+// ── Reviews (OPTIONAL rating/comment on a completed + paid booking) ──
+export const reviewApi = {
+  create: (payload: { bookingId: number; rating: number; comment?: string }) =>
+    api.post('/api/review', payload),
+
+  getByRide: (rideId: number) =>
+    api.get(`/api/review/ride/${rideId}`),
+}
+
 // ── Notifications (per-user, IsRead-tracked) ────────────────────
 export const notificationApi = {
   getAll: (params: { page?: number; pageSize?: number }) =>

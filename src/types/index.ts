@@ -89,6 +89,10 @@ export interface Ride {
   // enforces this on delete (RideService.DeleteAsync) — this just lets the
   // UI disable the button proactively instead of surfacing a toast error.
   hasActiveSchedule: boolean
+  // ✅ NEW — aggregated from every OPTIONAL review left on a completed +
+  // paid booking for this ride. 0/0 when the ride has no reviews yet.
+  averageRating: number
+  reviewCount: number
   createdAt: string
   updatedAt: string
 }
@@ -185,6 +189,20 @@ export interface BookingGuest {
   weightKg?: number
 }
 
+// A visitor's OPTIONAL rating/comment left on a completed + paid booking.
+export interface Review {
+  id: number
+  bookingId: number
+  rideId: number
+  rideName?: string
+  visitorId: number
+  visitorName?: string
+  visitorUsername?: string
+  rating: number
+  comment?: string
+  createdAt: string
+}
+
 // ── Booking ───────────────────────────────────────────────────
 export interface Booking {
   id: number
@@ -193,6 +211,9 @@ export interface Booking {
   visitorUsername?: string
   visitorContactNumber?: string
   scheduleId?: number       // ✅ CHANGED — optional: absent/null for promo bookings
+  // ✅ NEW — the ride this booking is for (regular bookings only, null for
+  // promo bookings) — backs the optional review feature.
+  rideId?: number
   rideName?: string
   rideDescription?: string  // ✅ NEW
   ridePrice?: number
@@ -210,6 +231,11 @@ export interface Booking {
 
   // ✅ NEW — group bookings: one entry per guest/seat under this booking.
   guests?: BookingGuest[]
+
+  // ✅ NEW — null until the visitor optionally leaves a rating/comment on
+  // this booking (only possible once it's Completed + Paid, and only for
+  // regular, non-promo bookings).
+  review?: Review
 
   bookingCode: string
   status: string

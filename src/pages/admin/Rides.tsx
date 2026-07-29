@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, ZoomIn, X, Loader2, ChevronDown, Filter,
   SortAsc, SortDesc, Type, Banknote,
   FerrisWheel,
-  Maximize2, Ruler, Cake, Weight
+  Maximize2, Ruler, Cake, Weight, Star
 } from 'lucide-react'
 import type { Ride, PaginationRequest } from '../../types'
 import api, { apiForm } from '../../services/api'
@@ -449,7 +449,17 @@ export default function AdminRidesPage() {
 
                   {/* Content */}
                   <div className="p-4">
-                    <h3 className="font-bold text-gray-900 text-[14px] mb-1 truncate">{ride.name}</h3>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <h3 className="font-bold text-gray-900 text-[14px] truncate">{ride.name}</h3>
+                      {/* ✅ NEW — average rating from every OPTIONAL review
+                          left on a completed + paid booking for this ride. */}
+                      {ride.reviewCount > 0 && (
+                        <span className="flex items-center gap-0.5 text-xs font-semibold text-amber-600 flex-shrink-0">
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          {ride.averageRating.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400 line-clamp-2 mb-3 min-h-[2rem]">{ride.description ?? 'No description'}</p>
 
                     {/* ✅ CHANGED — restriction badges, only shown when the
