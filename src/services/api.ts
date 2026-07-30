@@ -41,6 +41,24 @@ api.interceptors.response.use(
 
 export default api
 
+// ✅ NEW — the backend's [Range]/[Required] DataAnnotations validation
+// failures (e.g. on Ride's MinHeightCm/MaxHeightCm/etc.) come back as
+// ASP.NET Core's default ValidationProblemDetails shape:
+//   { title: "...", errors: { MaxHeightCm: ["Maximum height must be..."] } }
+// which has no top-level `.message` — so callers checking only
+// `e.response?.data?.message` silently swallow the real per-field text.
+// This pulls every message out of `.errors` (all fields, not just the
+// first) and joins them into one readable string; falls back to
+// `.message`/`.title`/the caller-supplied default for any other shape.
+export function extractApiError(e: any, fallback: string): string {
+  const data = e?.response?.data
+  if (data?.errors && typeof data.errors === 'object') {
+    const messages = Object.values(data.errors as Record<string, string[]>).flat()
+    if (messages.length > 0) return messages.join(' ')
+  }
+  return data?.message ?? data?.title ?? fallback
+}
+
 export const userApi = {
   getAll: (params: { page?: number; pageSize?: number; search?: string; role?: string; isActive?: boolean }) =>
     api.get('/api/user', { params }),

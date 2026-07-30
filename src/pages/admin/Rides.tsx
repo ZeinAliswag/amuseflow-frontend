@@ -9,7 +9,7 @@ import {
   Maximize2, Ruler, Cake, Weight, Star
 } from 'lucide-react'
 import type { Ride, PaginationRequest } from '../../types'
-import api, { apiForm } from '../../services/api'
+import api, { apiForm, extractApiError } from '../../services/api'
 import toast from 'react-hot-toast'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
@@ -296,15 +296,40 @@ export default function AdminRidesPage() {
     if (!form.name)           { setFormErr('Ride name is required.'); return }
     if (isNaN(priceNum) || priceNum < 0) { setFormErr('Please enter a valid price.'); return }
     if (!editRide && !imageFile) { setFormErr('Image is required for new rides.'); return }
-    // ✅ NEW — sanity-check the restriction ranges before submitting.
+    // ✅ NEW — mirrors the backend's [Range] DataAnnotations on
+    // CreateRideRequest exactly, so an out-of-range value (e.g. a 345cm
+    // max height) is caught here with the same wording instead of round-
+    // tripping to the server and coming back as a generic "Failed to save
+    // ride." — the server-side check still runs too (see catch block
+    // below), this is just to fail fast with the real message.
+    const fail = (msg: string) => { setFormErr(msg); toast.error(msg); return true }
+    if (form.minHeightCm !== '' && (Number(form.minHeightCm) < 50 || Number(form.minHeightCm) > 250)) {
+      if (fail('Minimum height must be between 50 and 250 cm.')) return
+    }
+    if (form.maxHeightCm !== '' && (Number(form.maxHeightCm) < 50 || Number(form.maxHeightCm) > 250)) {
+      if (fail('Maximum height must be between 50 and 250 cm.')) return
+    }
+    if (form.minAgeYears !== '' && (Number(form.minAgeYears) < 1 || Number(form.minAgeYears) > 100)) {
+      if (fail('Minimum age must be between 1 and 100 years.')) return
+    }
+    if (form.maxAgeYears !== '' && (Number(form.maxAgeYears) < 1 || Number(form.maxAgeYears) > 130)) {
+      if (fail('Maximum age must be between 1 and 130 years.')) return
+    }
+    if (form.minWeightKg !== '' && (Number(form.minWeightKg) < 1 || Number(form.minWeightKg) > 400)) {
+      if (fail('Minimum weight must be between 1 and 400 kg.')) return
+    }
+    if (form.maxWeightKg !== '' && (Number(form.maxWeightKg) < 1 || Number(form.maxWeightKg) > 400)) {
+      if (fail('Maximum weight must be between 1 and 400 kg.')) return
+    }
+    // ✅ sanity-check the restriction ranges before submitting.
     if (form.minHeightCm !== '' && form.maxHeightCm !== '' && Number(form.minHeightCm) > Number(form.maxHeightCm)) {
-      setFormErr('Min height can\'t be greater than max height.'); return
+      if (fail('Min height can\'t be greater than max height.')) return
     }
     if (form.minAgeYears !== '' && form.maxAgeYears !== '' && Number(form.minAgeYears) > Number(form.maxAgeYears)) {
-      setFormErr('Min age can\'t be greater than max age.'); return
+      if (fail('Min age can\'t be greater than max age.')) return
     }
     if (form.minWeightKg !== '' && form.maxWeightKg !== '' && Number(form.minWeightKg) > Number(form.maxWeightKg)) {
-      setFormErr('Min weight can\'t be greater than max weight.'); return
+      if (fail('Min weight can\'t be greater than max weight.')) return
     }
     setSaving(true)
     try {
@@ -334,7 +359,15 @@ export default function AdminRidesPage() {
       }
       setModalOpen(false); fetchRides()
     } catch (e: any) {
-      setFormErr(e.response?.data?.message ?? 'Failed to save ride.')
+      // ✅ FIXED — the backend returns ASP.NET Core's default
+      // ValidationProblemDetails shape for [Range]/[Required] failures
+      // (e.g. { errors: { MaxHeightCm: ["Maximum height must be..."] } }),
+      // which has no top-level `.message`. extractApiError() pulls the
+      // real per-field text out of `.errors` so the admin sees exactly
+      // which value is invalid instead of a generic "Failed to save ride."
+      const msg = extractApiError(e, 'Failed to save ride.')
+      setFormErr(msg)
+      toast.error(msg)
     } finally {
       setSaving(false)
     }
