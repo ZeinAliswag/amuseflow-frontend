@@ -221,6 +221,12 @@ export default function AdminRidesPage() {
   const [modalOpen, setModalOpen]   = useState(false)
   const [editRide, setEditRide]     = useState<Ride | null>(null)
   const [form, setForm]             = useState({ ...emptyForm })
+  // ✅ NEW — snapshot of the form as it was when the Edit modal was opened,
+  // so the Save button can stay disabled until the admin actually changes
+  // something (mirrors the same pattern on the Settings page). Not
+  // meaningful in Create mode — there's no "original" to compare against
+  // there, so Create is always left enabled.
+  const [savedForm, setSavedForm]   = useState({ ...emptyForm })
   const [imageFile, setImageFile]   = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState('')
   const [saving, setSaving]         = useState(false)
@@ -281,13 +287,20 @@ export default function AdminRidesPage() {
   useEffect(() => { fetchRides() }, [params, statusFilter])
 
   const openCreate = () => {
-    setEditRide(null); setForm({ ...emptyForm })
+    setEditRide(null); setForm({ ...emptyForm }); setSavedForm({ ...emptyForm })
     setImageFile(null); setImagePreview(''); setModalOpen(true)
   }
 
+  // ✅ NEW — Save button stays disabled until something actually differs
+  // from the loaded ride (or, in Create mode, is always considered
+  // "changed" since there's no original to compare against). A newly
+  // picked image file always counts as a change.
+  const hasFormChanges = !editRide || imageFile !== null ||
+    (Object.keys(form) as (keyof typeof form)[]).some(key => String(form[key]) !== String(savedForm[key]))
+
   const openEdit = (ride: Ride) => {
     setEditRide(ride)
-    setForm({
+    const loaded = {
       name: ride.name,
       description: ride.description ?? '',
       maxCapacity: ride.maxCapacity,
@@ -299,7 +312,9 @@ export default function AdminRidesPage() {
       maxAgeYears: ride.maxAgeYears ?? '',
       minWeightKg: ride.minWeightKg ?? '',
       maxWeightKg: ride.maxWeightKg ?? '',
-    })
+    }
+    setForm({ ...loaded })
+    setSavedForm({ ...loaded })
     setImageFile(null)
     setImagePreview(ride.imagePath ? getImageUrl(ride.imagePath)! : '')
     setModalOpen(true)
@@ -805,7 +820,7 @@ export default function AdminRidesPage() {
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
                   Cancel
                 </button>
-                <button type="submit" disabled={saving}
+                <button type="submit" disabled={saving || !hasFormChanges}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-60">
                   {saving
                     ? <Loader2 className="w-4 h-4 animate-spin" />

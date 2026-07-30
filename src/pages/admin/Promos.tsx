@@ -653,6 +653,10 @@ export default function AdminPromosPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editPromo, setEditPromo] = useState<RidePromo | null>(null)
   const [form, setForm] = useState({ ...emptyForm })
+  // ✅ NEW — snapshot of the form as loaded, so the Save button can stay
+  // disabled until the admin actually changes something (same pattern as
+  // Settings.tsx / Rides.tsx). Not meaningful in Create mode.
+  const [savedForm, setSavedForm] = useState({ ...emptyForm })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState('')
   const [saving, setSaving] = useState(false)
@@ -737,24 +741,42 @@ export default function AdminPromosPage() {
   useEffect(() => { fetchPromos() }, [params, statusFilter, activeStatus, dateFrom, dateTo])
 
   const openCreate = () => {
-    setEditPromo(null); setForm({ ...emptyForm })
+    setEditPromo(null); setForm({ ...emptyForm }); setSavedForm({ ...emptyForm })
     setImageFile(null); setImagePreview(''); setFormErr(''); setModalOpen(true)
   }
 
   const openEdit = (promo: RidePromo) => {
     setEditPromo(promo)
-    setForm({
+    const loaded = {
       name: promo.name,
       description: promo.description ?? '',
       price: Number(promo.price) || 0,
       promoDate: promo.promoDate?.slice(0, 10) ?? '',
       rideIds: promo.rides.map(r => r.rideId),
       scheduleByRide: Object.fromEntries(promo.rides.map(r => [r.rideId, r.scheduleId])),
-    })
+    }
+    setForm({ ...loaded })
+    setSavedForm({ ...loaded })
     setImageFile(null)
     setImagePreview(promo.imagePath ? getImageUrl(promo.imagePath)! : '')
     setFormErr(''); setModalOpen(true)
   }
+
+  // ✅ NEW — Save button stays disabled until something actually differs from
+  // the loaded promo (Create mode is always considered "changed"). rideIds
+  // order can legitimately shift as rides are toggled on/off, and
+  // scheduleByRide is a keyed object, so both need a stable/sorted
+  // comparison rather than plain reference/array equality. A newly picked
+  // image file always counts as a change.
+  const sortedEntries = (o: Record<number, number>) =>
+    JSON.stringify(Object.entries(o).sort(([a], [b]) => Number(a) - Number(b)))
+  const hasFormChanges = !editPromo || imageFile !== null ||
+    form.name !== savedForm.name ||
+    form.description !== savedForm.description ||
+    String(form.price) !== String(savedForm.price) ||
+    form.promoDate !== savedForm.promoDate ||
+    JSON.stringify([...form.rideIds].sort((a, b) => a - b)) !== JSON.stringify([...savedForm.rideIds].sort((a, b) => a - b)) ||
+    sortedEntries(form.scheduleByRide) !== sortedEntries(savedForm.scheduleByRide)
 
   // Changing the promo date invalidates any already-picked rides/schedules
   // that no longer fall on that day — clear them so the form can't silently
@@ -1250,7 +1272,7 @@ export default function AdminPromosPage() {
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
                   Cancel
                 </button>
-                <button type="submit" disabled={saving}
+                <button type="submit" disabled={saving || !hasFormChanges}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                   {editPromo ? 'Save changes' : 'Create promo'}
