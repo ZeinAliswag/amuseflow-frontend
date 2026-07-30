@@ -226,7 +226,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       {/* ── Main content ── */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Topbar */}
-        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3 flex-shrink-0">
+        <header className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 flex items-center gap-3 flex-shrink-0">
           <button onClick={() => setSidebarOpen(true)} className="md:hidden text-gray-500">
             <Menu className="w-5 h-5" />
           </button>
