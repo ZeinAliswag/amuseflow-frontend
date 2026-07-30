@@ -307,6 +307,31 @@ export interface Notification {
   recipientRole?: string
 }
 
+// ── Settings (admin-configurable Ride restriction bounds) ──────
+// Replaces what used to be hardcoded [Range] DataAnnotations on
+// CreateRideRequest — each pair is the allowed floor/ceiling for the
+// matching Ride restriction field (Min/MaxHeightCm, Min/MaxAgeYears,
+// Min/MaxWeightKg).
+export interface RideValidationSettings {
+  minHeightFloorCm: number
+  minHeightCeilingCm: number
+  maxHeightFloorCm: number
+  maxHeightCeilingCm: number
+
+  minAgeFloorYears: number
+  minAgeCeilingYears: number
+  maxAgeFloorYears: number
+  maxAgeCeilingYears: number
+
+  minWeightFloorKg: number
+  minWeightCeilingKg: number
+  maxWeightFloorKg: number
+  maxWeightCeilingKg: number
+
+  updatedAt: string
+  updatedByAdminId?: number
+}
+
 // ── Dashboard ─────────────────────────────────────────────────
 export interface AdminDashboard {
   totalRides: number

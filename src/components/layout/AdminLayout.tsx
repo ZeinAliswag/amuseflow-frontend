@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Ticket, Users, ClipboardList,
   Calendar, LogOut, ChevronDown, Menu, X,
-  FerrisWheel, Loader2, BadgePercent, Bell
+  FerrisWheel, Loader2, BadgePercent, Bell, Settings
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import api from '../../services/api'
@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
   { to: '/admin/notifications', icon: <Bell className="w-5 h-5" />,       label: 'Notifications' },
   { to: '/admin/users',     icon: <Users className="w-5 h-5" />,           label: 'Users' },
   { to: '/admin/logs',      icon: <ClipboardList className="w-5 h-5" />,   label: 'Activity Logs' },
+  { to: '/admin/settings',  icon: <Settings className="w-5 h-5" />,        label: 'Settings' },
 ]
 
 // How often to re-check the unread bookings count, in milliseconds.
@@ -225,7 +226,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       {/* ── Main content ── */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Topbar */}
-        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3 flex-shrink-0">
+        <header className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 flex items-center gap-3 flex-shrink-0">
           <button onClick={() => setSidebarOpen(true)} className="md:hidden text-gray-500">
             <Menu className="w-5 h-5" />
           </button>

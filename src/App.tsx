@@ -13,6 +13,7 @@ import AdminBookingsPage from './pages/admin/Bookings'
 import AdminNotificationsPage from './pages/admin/Notifications'
 import AdminUsersPage from './pages/admin/Users'
 import AdminLogsPage from './pages/admin/Logs'
+import AdminSettingsPage from './pages/admin/Settings'
 import { VisitorDashboard } from './pages/visitor/VisitorDashboard'
 import { AttendantDashboard } from './pages/attendant/AttendantDashboard'
 
@@ -86,6 +87,11 @@ function AppRoutes() {
       <Route path="/admin/logs" element={
         <ProtectedRoute roles={['Admin']}>
           <AdminLayout><AdminLogsPage /></AdminLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/admin/settings" element={
+        <ProtectedRoute roles={['Admin']}>
+          <AdminLayout><AdminSettingsPage /></AdminLayout>
         </ProtectedRoute>
       } />
 

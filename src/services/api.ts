@@ -161,3 +161,14 @@ export const notificationApi = {
   markAllAsReadGlobal: (params?: { cancelledOnly?: boolean }) =>
     api.put('/api/notification/all/mark-all-read', null, { params }),
 }
+
+// ── Settings (admin-configurable Ride restriction bounds) ───────
+// Backs the Admin "Settings" page's Ride Validations accordion section —
+// replaces what used to be hardcoded [Range] limits on the Ride form.
+export const settingsApi = {
+  getRideValidation: () =>
+    api.get('/api/ridevalidationsettings'),
+
+  updateRideValidation: (payload: Record<string, number>) =>
+    api.put('/api/ridevalidationsettings', payload),
+}

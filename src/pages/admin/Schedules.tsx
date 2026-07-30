@@ -733,6 +733,10 @@ export default function AdminSchedulesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editSched, setEditSched] = useState<Schedule | null>(null)
   const [form, setForm]           = useState({ ...emptyForm })
+  // ✅ NEW — snapshot of the form as loaded, so the Save button can stay
+  // disabled until the admin actually changes something in Edit mode (same
+  // pattern as Settings.tsx / Rides.tsx / Promos.tsx).
+  const [savedForm, setSavedForm] = useState({ ...emptyForm })
   const [saving, setSaving]       = useState(false)
 
   // ── Time floor — when the picked schedule date is today, none of the
@@ -822,6 +826,7 @@ export default function AdminSchedulesPage() {
   const openCreate = (dateStr?: string) => {
     setEditSched(null)
     setForm({ ...emptyForm, scheduleDate: dateStr ?? '' })
+    setSavedForm({ ...emptyForm, scheduleDate: dateStr ?? '' })
     setModalOpen(true)
   }
 
@@ -844,7 +849,7 @@ export default function AdminSchedulesPage() {
       return
     }
     setEditSched(s)
-    setForm({
+    const loaded = {
       ...emptyForm,
       rideId:       s.rideId,
       attendantId:  String(s.attendantId ?? ''),
@@ -855,10 +860,21 @@ export default function AdminSchedulesPage() {
       maxSlots:     s.maxSlots,
       status:       s.status ?? 'Open',
       scheduleType: s.scheduleType ?? 'Regular',
-    })
+    }
+    setForm(loaded)
+    setSavedForm(loaded)
     setDayModal(null)
     setModalOpen(true)
   }
+
+  // ✅ NEW — Save button stays disabled in Edit mode until one of the
+  // actually-editable fields differs from what was loaded. dateMode/range*/
+  // attendantMode/rangeAttendants are Create-only bulk-creation fields (edit
+  // always starts from emptyForm's 'single'/'same' values, untouched by the
+  // Edit form), so they're deliberately excluded from this comparison.
+  const EDITABLE_KEYS = ['rideId', 'attendantId', 'scheduleDate', 'callTime', 'startTime', 'endTime', 'maxSlots', 'status', 'scheduleType'] as const
+  const hasFormChanges = !editSched ||
+    EDITABLE_KEYS.some(key => String(form[key]) !== String(savedForm[key]))
 
   const handleSubmitClick = (e: FormEvent) => {
     e.preventDefault()
@@ -1481,7 +1497,7 @@ export default function AdminSchedulesPage() {
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
                   Cancel
                 </button>
-                <button type="submit" disabled={saving}
+                <button type="submit" disabled={saving || !hasFormChanges}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                   {editSched ? 'Save changes' : !editSched && form.dateMode === 'range' && rangeDates.length > 0 ? `Create ${rangeDates.length} schedule${rangeDates.length === 1 ? '' : 's'}` : 'Create schedule'}

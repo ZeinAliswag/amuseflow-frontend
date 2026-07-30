@@ -698,7 +698,7 @@ export default function AdminUsersPage() {
                 className="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
                 Cancel
               </button>
-              <button onClick={handleSaveRoleClick} disabled={editSaving}
+              <button onClick={handleSaveRoleClick} disabled={editSaving || newRole === editUser?.role}
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60">
                 {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                 Save role

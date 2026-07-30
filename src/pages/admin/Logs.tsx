@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import {
   ClipboardList, Filter, X, Clock, User, Tag, FileText,
  Calendar, Ticket, UserCog, Search, ChevronLeft, ChevronRight, CalendarDays, ChevronDown,
-  FerrisWheel, Shield, HardHat, UserRound, ArrowDownWideNarrow, ArrowUpWideNarrow
+  FerrisWheel, Shield, HardHat, UserRound, ArrowDownWideNarrow, ArrowUpWideNarrow,
+  Settings as SettingsIcon
 } from 'lucide-react'
 import type { ActivityLog, PaginationRequest } from '../../types'
 import api from '../../services/api'
@@ -21,13 +22,16 @@ function maskBookingCodesInText(text: string): string {
   })
 }
 
-const MODULE_OPTS = ['Ride', 'Schedule', 'Booking', 'User']
+const MODULE_OPTS = ['Ride', 'Schedule', 'Booking', 'User', 'Settings']
 
 const moduleColor = (m: string) => {
   if (m === 'Ride')     return { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500', line: 'bg-purple-200', solid: 'bg-purple-500' }
   if (m === 'Schedule') return { bg: 'bg-amber-100',  text: 'text-amber-700',  border: 'border-amber-200',  dot: 'bg-amber-500',  line: 'bg-amber-200', solid: 'bg-amber-500' }
   if (m === 'Booking')  return { bg: 'bg-green-100',  text: 'text-green-700',  border: 'border-green-200',  dot: 'bg-green-500',  line: 'bg-green-200', solid: 'bg-green-500' }
   if (m === 'User')     return { bg: 'bg-blue-100',   text: 'text-blue-700',   border: 'border-blue-200',   dot: 'bg-blue-500',   line: 'bg-blue-200', solid: 'bg-blue-500' }
+  // ✅ NEW — Settings stays neutral gray (not another accent color), matching
+  // the gray gear icon used for Settings everywhere else in the app.
+  if (m === 'Settings') return { bg: 'bg-gray-200',  text: 'text-gray-700',  border: 'border-gray-300',  dot: 'bg-gray-500',  line: 'bg-gray-300', solid: 'bg-gray-500' }
   return { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200', dot: 'bg-gray-400', line: 'bg-gray-200', solid: 'bg-gray-400' }
 }
 
@@ -37,6 +41,7 @@ function ModuleIcon({ m, size = 'sm' }: { m: string; size?: 'sm' | 'lg' }) {
   if (m === 'Schedule') return <Calendar className={`${cls} text-amber-600`} />
   if (m === 'Booking')  return <Ticket   className={`${cls} text-green-600`} />
   if (m === 'User')     return <UserCog  className={`${cls} text-blue-600`} />
+  if (m === 'Settings') return <SettingsIcon className={`${cls} text-gray-600`} />
   return <ClipboardList className={`${cls} text-gray-500`} />
 }
 

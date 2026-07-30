@@ -1117,26 +1117,26 @@ function PortalHeader({
   return (
     <div className="min-h-screen bg-gray-50">
       <header className={`${accentColor} sticky top-0 z-30 shadow-sm w-full`}>
-        <div className="px-8 flex items-center justify-between h-16">
+        <div className="px-3 sm:px-6 lg:px-8 flex items-center justify-between h-16 gap-2">
           {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className={iconWrapperClassName}>
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className={`${iconWrapperClassName} flex-shrink-0`}>
               {portalIcon}
             </div>
-            <div>
-              <p className="text-base font-bold text-white leading-tight">Gloria's Fantasyland</p>
-              <p className="text-white/70 text-xs">{portalLabel}</p>
+            <div className="min-w-0">
+              <p className="text-sm sm:text-base font-bold text-white leading-tight truncate">Gloria's Fantasyland</p>
+              <p className="text-white/70 text-xs truncate">{portalLabel}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           {/* Notifications */}
           <NotificationBell />
 
           {/* User menu */}
           <div className="relative">
             <button onClick={() => setOpen(!open)}
-              className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 transition-all border border-white/20">
+              className="flex items-center gap-2.5 px-2 sm:px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 transition-all border border-white/20">
               <Avatar initials={user?.initials ?? '?'} color={avatarColor} />
               <div className="text-left hidden sm:block">
                 <p className="text-sm font-semibold text-white leading-tight">{user?.fullName}</p>
