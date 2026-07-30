@@ -158,6 +158,11 @@ export interface RidePromo {
   // day after. Flips automatically on the backend.
   status: 'Active' | 'Completed'
   isDeleted: boolean
+  // ✅ NEW — aggregated from every OPTIONAL review left on a completed +
+  // paid promo booking (one review per promo booking, not per included
+  // ride). 0/0 when the promo has no reviews yet.
+  averageRating: number
+  reviewCount: number
   createdAt: string
   updatedAt: string
   rides: PromoRideItem[]

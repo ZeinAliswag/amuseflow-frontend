@@ -1603,7 +1603,18 @@ export function VisitorDashboard() {
                           )}
                         </div>
                         <div className="p-4">
-                          <h4 className="font-bold text-gray-900 text-base mb-1 truncate">{promo.name}</h4>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <h4 className="font-bold text-gray-900 text-base truncate">{promo.name}</h4>
+                            {/* ✅ NEW — average rating from every OPTIONAL review
+                                left on a completed + paid promo booking (one
+                                review per promo booking, not per included ride). */}
+                            {promo.reviewCount > 0 && (
+                              <span className="flex items-center gap-0.5 text-xs font-semibold text-amber-600 flex-shrink-0">
+                                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                {promo.averageRating.toFixed(1)}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-400 line-clamp-2 mb-2 min-h-[2rem]">{promo.description ?? 'No description'}</p>
                           <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-pink-700 bg-pink-50 border border-pink-100 rounded-lg px-2 py-1 mb-2">
                             <Calendar className="w-3.5 h-3.5" />

@@ -5,7 +5,7 @@ import {
   CheckCircle2, Search,
   ChevronLeft, ChevronRight, ZoomIn, X, Loader2, ChevronDown,
   Tag, Calendar, FerrisWheel, Check, Clock, AlarmClock, CalendarCheck,
-  Eye, CalendarDays, Layers, CheckCheck, Users
+  Eye, CalendarDays, Layers, CheckCheck, Users, Star
 } from 'lucide-react'
 import type { RidePromo, Ride, Schedule, PaginationRequest } from '../../types'
 import api, { promoApi } from '../../services/api'
@@ -950,7 +950,18 @@ export default function AdminPromosPage() {
                   </div>
 
                   <div className="p-4">
-                    <h3 className="font-bold text-gray-900 text-[14px] mb-1 truncate">{promo.name}</h3>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <h3 className="font-bold text-gray-900 text-[14px] truncate">{promo.name}</h3>
+                      {/* ✅ NEW — average rating from every OPTIONAL review left
+                          on a completed + paid promo booking (one review per
+                          promo booking, not per included ride). */}
+                      {promo.reviewCount > 0 && (
+                        <span className="flex items-center gap-0.5 text-xs font-semibold text-amber-600 flex-shrink-0">
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          {promo.averageRating.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400 line-clamp-2 mb-2 min-h-[2rem]">{promo.description ?? 'No description'}</p>
 
                     <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-pink-700 bg-pink-50 border border-pink-100 rounded-lg px-2.5 py-1.5 mb-2.5">
