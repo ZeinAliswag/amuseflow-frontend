@@ -8,8 +8,8 @@ import {
   FerrisWheel,
   Maximize2, Ruler, Cake, Weight, Star
 } from 'lucide-react'
-import type { Ride, PaginationRequest } from '../../types'
-import api, { apiForm, extractApiError } from '../../services/api'
+import type { Ride, PaginationRequest, RideValidationSettings } from '../../types'
+import api, { apiForm, extractApiError, settingsApi } from '../../services/api'
 import toast from 'react-hot-toast'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
@@ -231,6 +231,31 @@ export default function AdminRidesPage() {
   // image zoom
   const [zoomSrc, setZoomSrc]       = useState<string | null>(null)
 
+  // ✅ CHANGED — the allowed floor/ceiling for each restriction field used to
+  // be hardcoded here (mirroring the backend's now-removed [Range]
+  // attributes). It's now fetched from the admin-configurable Settings
+  // module, so a bounds change there is reflected here without a redeploy.
+  // Falls back to the original hardcoded defaults if the fetch fails, so
+  // ride saving still works even if Settings is unreachable.
+  const [bounds, setBounds] = useState<RideValidationSettings>({
+    minHeightFloorCm: 50, minHeightCeilingCm: 250,
+    maxHeightFloorCm: 50, maxHeightCeilingCm: 250,
+    minAgeFloorYears: 1, minAgeCeilingYears: 100,
+    maxAgeFloorYears: 1, maxAgeCeilingYears: 130,
+    minWeightFloorKg: 1, minWeightCeilingKg: 400,
+    maxWeightFloorKg: 1, maxWeightCeilingKg: 400,
+    updatedAt: '',
+  })
+
+  useEffect(() => {
+    settingsApi.getRideValidation()
+      .then(res => {
+        const data: RideValidationSettings = res.data?.data ?? res.data
+        if (data) setBounds(data)
+      })
+      .catch(() => { /* keep defaults — ride saving still works */ })
+  }, [])
+
   const getImageUrl = (path?: string) => {
     if (!path) return null
     if (path.startsWith('http')) return path
@@ -293,32 +318,35 @@ export default function AdminRidesPage() {
     if (!form.name)           { toast.error('Ride name is required.'); return }
     if (isNaN(priceNum) || priceNum < 0) { toast.error('Please enter a valid price.'); return }
     if (!editRide && !imageFile) { toast.error('Image is required for new rides.'); return }
-    // ✅ NEW — mirrors the backend's [Range] DataAnnotations on
-    // CreateRideRequest exactly, so an out-of-range value (e.g. a 345cm
-    // max height) is caught here with the same wording instead of round-
-    // tripping to the server and coming back as a generic "Failed to save
-    // ride." — the server-side check still runs too (see catch block
-    // below), this is just to fail fast with the real message.
+    // ✅ CHANGED — used to mirror the backend's static [Range]
+    // DataAnnotations on CreateRideRequest with hardcoded numbers. Those
+    // attributes are gone; the bounds now come from the admin-configurable
+    // Settings module (`bounds`, fetched on mount), so this stays in sync
+    // with whatever an admin has set there — an out-of-range value is still
+    // caught here with the real wording instead of round-tripping to the
+    // server and coming back as a generic "Failed to save ride." — the
+    // server-side check still runs too (see catch block below), this is
+    // just to fail fast with the real message.
     // ✅ CHANGED — validation errors now surface as a toast only (no more
     // inline red banner in the modal), per request.
     const fail = (msg: string) => { toast.error(msg); return true }
-    if (form.minHeightCm !== '' && (Number(form.minHeightCm) < 50 || Number(form.minHeightCm) > 250)) {
-      if (fail('Minimum height must be between 50 and 250 cm.')) return
+    if (form.minHeightCm !== '' && (Number(form.minHeightCm) < bounds.minHeightFloorCm || Number(form.minHeightCm) > bounds.minHeightCeilingCm)) {
+      if (fail(`Minimum height must be between ${bounds.minHeightFloorCm} and ${bounds.minHeightCeilingCm} cm.`)) return
     }
-    if (form.maxHeightCm !== '' && (Number(form.maxHeightCm) < 50 || Number(form.maxHeightCm) > 250)) {
-      if (fail('Maximum height must be between 50 and 250 cm.')) return
+    if (form.maxHeightCm !== '' && (Number(form.maxHeightCm) < bounds.maxHeightFloorCm || Number(form.maxHeightCm) > bounds.maxHeightCeilingCm)) {
+      if (fail(`Maximum height must be between ${bounds.maxHeightFloorCm} and ${bounds.maxHeightCeilingCm} cm.`)) return
     }
-    if (form.minAgeYears !== '' && (Number(form.minAgeYears) < 1 || Number(form.minAgeYears) > 100)) {
-      if (fail('Minimum age must be between 1 and 100 years.')) return
+    if (form.minAgeYears !== '' && (Number(form.minAgeYears) < bounds.minAgeFloorYears || Number(form.minAgeYears) > bounds.minAgeCeilingYears)) {
+      if (fail(`Minimum age must be between ${bounds.minAgeFloorYears} and ${bounds.minAgeCeilingYears} years.`)) return
     }
-    if (form.maxAgeYears !== '' && (Number(form.maxAgeYears) < 1 || Number(form.maxAgeYears) > 130)) {
-      if (fail('Maximum age must be between 1 and 130 years.')) return
+    if (form.maxAgeYears !== '' && (Number(form.maxAgeYears) < bounds.maxAgeFloorYears || Number(form.maxAgeYears) > bounds.maxAgeCeilingYears)) {
+      if (fail(`Maximum age must be between ${bounds.maxAgeFloorYears} and ${bounds.maxAgeCeilingYears} years.`)) return
     }
-    if (form.minWeightKg !== '' && (Number(form.minWeightKg) < 1 || Number(form.minWeightKg) > 400)) {
-      if (fail('Minimum weight must be between 1 and 400 kg.')) return
+    if (form.minWeightKg !== '' && (Number(form.minWeightKg) < bounds.minWeightFloorKg || Number(form.minWeightKg) > bounds.minWeightCeilingKg)) {
+      if (fail(`Minimum weight must be between ${bounds.minWeightFloorKg} and ${bounds.minWeightCeilingKg} kg.`)) return
     }
-    if (form.maxWeightKg !== '' && (Number(form.maxWeightKg) < 1 || Number(form.maxWeightKg) > 400)) {
-      if (fail('Maximum weight must be between 1 and 400 kg.')) return
+    if (form.maxWeightKg !== '' && (Number(form.maxWeightKg) < bounds.maxWeightFloorKg || Number(form.maxWeightKg) > bounds.maxWeightCeilingKg)) {
+      if (fail(`Maximum weight must be between ${bounds.maxWeightFloorKg} and ${bounds.maxWeightCeilingKg} kg.`)) return
     }
     // ✅ sanity-check the restriction ranges before submitting.
     if (form.minHeightCm !== '' && form.maxHeightCm !== '' && Number(form.minHeightCm) > Number(form.maxHeightCm)) {

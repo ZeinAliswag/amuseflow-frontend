@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Ticket, Users, ClipboardList,
   Calendar, LogOut, ChevronDown, Menu, X,
-  FerrisWheel, Loader2, BadgePercent, Bell
+  FerrisWheel, Loader2, BadgePercent, Bell, Settings
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import api from '../../services/api'
@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
   { to: '/admin/notifications', icon: <Bell className="w-5 h-5" />,       label: 'Notifications' },
   { to: '/admin/users',     icon: <Users className="w-5 h-5" />,           label: 'Users' },
   { to: '/admin/logs',      icon: <ClipboardList className="w-5 h-5" />,   label: 'Activity Logs' },
+  { to: '/admin/settings',  icon: <Settings className="w-5 h-5" />,        label: 'Settings' },
 ]
 
 // How often to re-check the unread bookings count, in milliseconds.
