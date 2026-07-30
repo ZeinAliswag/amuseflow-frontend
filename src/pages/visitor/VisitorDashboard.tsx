@@ -4,10 +4,10 @@ import {
   Users, Calendar, ChevronLeft, ChevronRight, ChevronDown,
   Search, MapPin, ZoomIn, X, Loader2, ArrowLeft,
   UserCog, CalendarDays, AlarmClock,
-  FerrisWheel, Tag, PackageCheck
+  FerrisWheel, Tag, PackageCheck, Star
 } from 'lucide-react'
-import type { Booking, Ride, RidePromo, PaginationRequest } from '../../types'
-import api, { promoApi, bookingApi } from '../../services/api'
+import type { Booking, Ride, RidePromo, PromoRideItem, PaginationRequest } from '../../types'
+import api, { promoApi, bookingApi, reviewApi } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 
@@ -216,6 +216,499 @@ function ConfirmModal({ title, message, confirmLabel, danger, onConfirm, onCance
               danger ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
             }`}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ✅ NEW — read-only star row, used to show a rating that's already been
+// submitted (e.g. "You rated this ride"). Half-star-free — ratings are
+// always a whole 1-5 integer.
+function StarRatingDisplay({ rating, size = 'w-3.5 h-3.5' }: { rating: number; size?: string }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map(n => (
+        <Star key={n} className={`${size} ${n <= rating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`} />
+      ))}
+    </div>
+  )
+}
+
+// ✅ NEW — an OPTIONAL rating (1-5) + comment left on a completed + paid
+// ride booking. Never required — the visitor can always just close this
+// without submitting anything.
+function ReviewModal({ rideName, onSubmit, onCancel, loading }: {
+  rideName: string
+  onSubmit: (rating: number, comment: string) => void
+  onCancel: () => void
+  loading?: boolean
+}) {
+  const [rating, setRating] = useState(0)
+  const [hoverRating, setHoverRating] = useState(0)
+  const [comment, setComment] = useState('')
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+        <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-amber-100 text-amber-600">
+          <Star className="w-6 h-6" />
+        </div>
+        <div className="text-[15px] font-bold text-gray-900 mb-1">Rate "{rideName}"</div>
+        <div className="text-[12px] text-gray-500 mb-4">
+          Totally optional — leave a rating and/or a quick comment, or just close this.
+        </div>
+
+        <div className="flex items-center gap-1 mb-4">
+          {[1, 2, 3, 4, 5].map(n => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setRating(n)}
+              onMouseEnter={() => setHoverRating(n)}
+              onMouseLeave={() => setHoverRating(0)}
+              className="p-0.5"
+            >
+              <Star className={`w-7 h-7 transition-colors ${
+                n <= (hoverRating || rating) ? 'fill-amber-400 text-amber-400' : 'text-gray-300'
+              }`} />
+            </button>
+          ))}
+        </div>
+
+        <textarea
+          value={comment}
+          onChange={e => setComment(e.target.value)}
+          placeholder="Anything you'd like to add? (optional)"
+          rows={3}
+          maxLength={1000}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-4 resize-none focus:outline-none focus:ring-2 focus:ring-amber-300"
+        />
+
+        <div className="flex gap-2.5">
+          <button onClick={onCancel} disabled={loading}
+            className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
+            Not now
+          </button>
+          <button
+            onClick={() => onSubmit(rating, comment.trim())}
+            disabled={loading || rating === 0}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60 transition-colors bg-amber-500 hover:bg-amber-600 text-white">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit review'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ✅ CHANGED — one ticket per booking (1:1): a single booking is exactly one
+// guest/seat, collecting a name (and, when the ride has a restriction,
+// birthdate/height/weight). Booking for someone else (e.g. your father) is
+// its own separate booking — its own code, its own payment — not a second
+// seat bundled under your booking.
+// ✅ CHANGED — birthdate is now typed as three plain number fields
+// (month/day/year) instead of picked from a calendar popover — much faster
+// for a birthdate that could be decades in the past.
+type GuestRow = { name: string; birthMonth: string; birthDay: string; birthYear: string; height: string; weight: string }
+
+// Whether `year` is a leap year (Feb has 29 days instead of 28).
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0
+}
+
+// The real number of days in a given month/year — used to reject
+// impossible calendar dates (September 31, February 30, February 29 outside
+// a leap year) instead of the generic "1-31" range check that let them
+// through and silently rolled over to the next month.
+function daysInMonth(month: number, year: number): number {
+  const days = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return days[month - 1]
+}
+
+// Builds an ISO date string ("1990-05-14") from a guest row's typed
+// month/day/year fields, or '' if any part is missing/invalid — including
+// a day that doesn't actually exist in that month (e.g. "09/31/1990" or
+// "02/29/2021" outside a leap year).
+function birthDateISO(row: GuestRow): string {
+  const m = parseInt(row.birthMonth)
+  const d = parseInt(row.birthDay)
+  const y = parseInt(row.birthYear)
+  if (!m || m < 1 || m > 12 || !d || d < 1 || !y || y < 1900) return ''
+  if (d > daysInMonth(m, y)) return ''
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
+// ✅ NEW — prevents an impossible day from ever sitting in the field in the
+// first place (e.g. typing 31 while September is selected, or picking
+// September while 31 is already typed), instead of only catching it after
+// the fact via birthDateISO's validation. Takes the row's CURRENT values
+// plus whatever's about to change, and — if the resulting day doesn't exist
+// in that month/year — silently caps the day down to that month's last
+// valid day. Uses a leap year (2000) as a lenient placeholder for Feb 29
+// until the year field is actually typed.
+function clampBirthDay(row: GuestRow, patch: Partial<GuestRow>): Partial<GuestRow> {
+  const merged = { ...row, ...patch }
+  const m = parseInt(merged.birthMonth)
+  const d = parseInt(merged.birthDay)
+  const y = parseInt(merged.birthYear)
+  if (m >= 1 && m <= 12 && d >= 1) {
+    const max = daysInMonth(m, isNaN(y) ? 2000 : y)
+    if (d > max) return { ...patch, birthDay: String(max) }
+  }
+  return patch
+}
+
+// Computes a whole-years age from a birthdate ("1990-05-14"), as of today.
+function calcAge(birthDate: string): number | null {
+  if (!birthDate) return null
+  const b = new Date(birthDate)
+  if (isNaN(b.getTime())) return null
+  const today = new Date()
+  if (b > today) return null
+  let age = today.getFullYear() - b.getFullYear()
+  const beforeBirthdayThisYear =
+    today.getMonth() < b.getMonth() ||
+    (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())
+  if (beforeBirthdayThisYear) age--
+  return age >= 0 ? age : null
+}
+
+// ✅ NEW — Ride Promo group bookings: a guest must qualify for EVERY ride
+// bundled in the promo. Combines each ride's own min/max into the
+// INTERSECTION of all of them (the strictest min, the strictest max) —
+// satisfying the combined range guarantees satisfying every individual
+// ride's restriction too, so the guest modal can show/validate one range
+// per restriction type instead of one per ride.
+function combinePromoRange(rides: PromoRideItem[], minKey: 'minHeightCm'|'minAgeYears'|'minWeightKg', maxKey: 'maxHeightCm'|'maxAgeYears'|'maxWeightKg') {
+  const mins = rides.map(r => r[minKey]).filter((v): v is number => v != null)
+  const maxs = rides.map(r => r[maxKey]).filter((v): v is number => v != null)
+  return {
+    min: mins.length ? Math.max(...mins) : undefined,
+    max: maxs.length ? Math.min(...maxs) : undefined,
+  }
+}
+
+function GuestBookingModal({
+  rideName, date, time, price,
+  minHeightCm, maxHeightCm, minAgeYears, maxAgeYears, minWeightKg, maxWeightKg, defaultName,
+  onConfirm, onCancel, loading
+}: {
+  rideName: string; date: string; time: string; price: number
+  minHeightCm?: number; maxHeightCm?: number; minAgeYears?: number; maxAgeYears?: number
+  minWeightKg?: number; maxWeightKg?: number; defaultName: string
+  onConfirm: (guests: { guestName: string; ageYears?: number; heightCm?: number; weightKg?: number }[]) => void
+  onCancel: () => void; loading?: boolean
+}) {
+  const hasHeightRestriction = minHeightCm != null || maxHeightCm != null
+  const hasAgeRestriction = minAgeYears != null || maxAgeYears != null
+  const hasWeightRestriction = minWeightKg != null || maxWeightKg != null
+  const hasRestriction = hasHeightRestriction || hasAgeRestriction || hasWeightRestriction
+
+  // ✅ CHANGED — one ticket per booking (1:1), no more group/guest-list UI.
+  // A single guest form, same shape/fields as before, just without the
+  // add/remove-guest scaffolding.
+  const [guest, setGuest] = useState<GuestRow>({ name: defaultName, birthMonth: '', birthDay: '', birthYear: '', height: '', weight: '' })
+  const updateGuest = (patch: Partial<GuestRow>) => setGuest(g => ({ ...g, ...patch }))
+  // ✅ NEW — routes every birthdate field change through clampBirthDay so an
+  // impossible day (Sept 31, Feb 30, Feb 29 outside a leap year) can never
+  // sit in the field — it's capped down automatically instead of only
+  // failing validation after the fact.
+  const updateBirthdate = (patch: Partial<GuestRow>) => updateGuest(clampBirthDay(guest, patch))
+  const maxBirthDay = (() => {
+    const m = parseInt(guest.birthMonth)
+    const y = parseInt(guest.birthYear)
+    return m >= 1 && m <= 12 ? daysInMonth(m, isNaN(y) ? 2000 : y) : 31
+  })()
+
+  const heightRangeLabel = minHeightCm != null && maxHeightCm != null
+    ? `${minHeightCm}-${maxHeightCm}cm` : minHeightCm != null ? `min ${minHeightCm}cm` : `max ${maxHeightCm}cm`
+  const ageRangeLabel = minAgeYears != null && maxAgeYears != null
+    ? `${minAgeYears}-${maxAgeYears}y` : minAgeYears != null ? `min ${minAgeYears}y` : `max ${maxAgeYears}y`
+  const weightRangeLabel = minWeightKg != null && maxWeightKg != null
+    ? `${minWeightKg}-${maxWeightKg}kg` : minWeightKg != null ? `min ${minWeightKg}kg` : `max ${maxWeightKg}kg`
+
+  const guestFails = (row: GuestRow): string[] => {
+    const fails: string[] = []
+    if (hasHeightRestriction) {
+      const h = parseInt(row.height)
+      if (!row.height || isNaN(h)) fails.push(heightRangeLabel)
+      else if ((minHeightCm != null && h < minHeightCm) || (maxHeightCm != null && h > maxHeightCm)) fails.push(heightRangeLabel)
+    }
+    if (hasAgeRestriction) {
+      const age = calcAge(birthDateISO(row))
+      if (age == null) fails.push(ageRangeLabel)
+      else if ((minAgeYears != null && age < minAgeYears) || (maxAgeYears != null && age > maxAgeYears)) fails.push(ageRangeLabel)
+    }
+    if (hasWeightRestriction) {
+      const w = parseInt(row.weight)
+      if (!row.weight || isNaN(w)) fails.push(weightRangeLabel)
+      else if ((minWeightKg != null && w < minWeightKg) || (maxWeightKg != null && w > maxWeightKg)) fails.push(weightRangeLabel)
+    }
+    return fails
+  }
+
+  const fails = guestFails(guest)
+  const age = calcAge(birthDateISO(guest))
+  const birthdateTyped = guest.birthMonth || guest.birthDay || guest.birthYear
+  const canSubmit = guest.name.trim().length > 0 && (!hasRestriction || fails.length === 0)
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl max-h-[85vh] overflow-y-auto">
+        <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-emerald-100 text-emerald-600">
+          <CheckCircle2 className="w-6 h-6" />
+        </div>
+        <div className="text-[15px] font-bold text-gray-900 mb-1">Book "{rideName}"?</div>
+        <div className="text-[12px] text-gray-500 mb-4">
+          {new Date(date).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} at {fmtTime(time)}
+          {hasRestriction && (
+            <span className="block mt-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+              This ride requires you to be{' '}
+              {[hasHeightRestriction ? `${heightRangeLabel.replace('cm', ' cm tall').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null,
+                hasAgeRestriction ? `${ageRangeLabel.replace('y', ' years old').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null,
+                hasWeightRestriction ? `${weightRangeLabel.replace('kg', 'kg').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null]
+                .filter(Boolean).join(' and ')}.
+            </span>
+          )}
+        </div>
+
+        <div className="mb-3">
+          <div className="border border-gray-200 rounded-xl p-3">
+            <input
+              value={guest.name}
+              onChange={e => updateGuest({ name: e.target.value })}
+              placeholder="Guest name"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              {hasHeightRestriction && (
+                <input type="number" min="0" value={guest.height}
+                  onChange={e => updateGuest({ height: e.target.value })}
+                  placeholder="Height (cm)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+              )}
+              {/* ✅ CHANGED — weight is always collected (like name), not
+                  just when the ride restricts it. Validation still only
+                  kicks in if the ride actually has a Min/Max Weight configured. */}
+              <input type="number" min="0" value={guest.weight}
+                onChange={e => updateGuest({ weight: e.target.value })}
+                placeholder="Weight (kg)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+              {hasAgeRestriction && (
+                <div className="col-span-2">
+                  {/* ✅ CHANGED — birthdate is typed as plain MM/DD/YYYY
+                      number fields instead of picked from a calendar, and
+                      validated against real days-per-month (e.g. no Sept 31,
+                      no Feb 29 outside a leap year) — see birthDateISO. */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <input type="number" min="1" max="12" placeholder="MM" value={guest.birthMonth}
+                      onChange={e => updateBirthdate({ birthMonth: e.target.value })}
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+                    <input type="number" min="1" max={maxBirthDay} placeholder="DD" value={guest.birthDay}
+                      onChange={e => updateBirthdate({ birthDay: e.target.value })}
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+                    <input type="number" min="1900" max={new Date().getFullYear()} placeholder="YYYY" value={guest.birthYear}
+                      onChange={e => updateBirthdate({ birthYear: e.target.value })}
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+                  </div>
+                  <div className="text-[10px] text-gray-400 mt-1">
+                    Birthdate (month / day / year)
+                    {birthdateTyped ? ` — ${age != null ? `${age} years old` : 'invalid date'}` : ''}
+                  </div>
+                </div>
+              )}
+            </div>
+            {fails.length > 0 && (
+              <div className="text-[11px] text-red-600 mt-1.5">Doesn't meet requirement: {fails.join(', ')}</div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mb-4 pt-3 border-t border-gray-100">
+          <span className="text-xs text-gray-500">Total</span>
+          <span className="font-bold text-emerald-600 text-sm">₱{fmt(price)}</span>
+        </div>
+
+        <div className="flex gap-2.5">
+          <button onClick={onCancel} disabled={loading}
+            className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm([{
+              guestName: guest.name.trim(),
+              ageYears: calcAge(birthDateISO(guest)) ?? undefined,
+              heightCm: guest.height ? parseInt(guest.height) : undefined,
+              weightKg: guest.weight ? parseInt(guest.weight) : undefined,
+            }])}
+            disabled={loading || !canSubmit}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60 transition-colors bg-emerald-600 hover:bg-emerald-700 text-white">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm booking'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ✅ NEW — Ride Promo equivalent of GuestBookingModal. Same guest-list
+// collection/validation, but the height/age/weight range shown/checked is
+// the combined intersection across every ride bundled in the promo (see
+// combinePromoRange above) — a guest must qualify for all of them, using
+// each included ride's own restrictions (set on Admin Rides), not a
+// separate promo-level setting.
+function PromoGuestBookingModal({
+  promoName, rideCount, price,
+  minHeightCm, maxHeightCm, minAgeYears, maxAgeYears, minWeightKg, maxWeightKg, defaultName,
+  onConfirm, onCancel, loading
+}: {
+  promoName: string; rideCount: number; price: number
+  minHeightCm?: number; maxHeightCm?: number; minAgeYears?: number; maxAgeYears?: number
+  minWeightKg?: number; maxWeightKg?: number; defaultName: string
+  onConfirm: (guests: { guestName: string; ageYears?: number; heightCm?: number; weightKg?: number }[]) => void
+  onCancel: () => void; loading?: boolean
+}) {
+  const hasHeightRestriction = minHeightCm != null || maxHeightCm != null
+  const hasAgeRestriction = minAgeYears != null || maxAgeYears != null
+  const hasWeightRestriction = minWeightKg != null || maxWeightKg != null
+  const hasRestriction = hasHeightRestriction || hasAgeRestriction || hasWeightRestriction
+
+  // ✅ CHANGED — one ticket per booking (1:1): a single-guest form, same as
+  // GuestBookingModal, no more multi-guest add/remove UI. Booking your
+  // father under his own name/age/height is simply a separate booking with
+  // its own code and its own payment, not a second seat tacked onto yours.
+  const [guest, setGuest] = useState<GuestRow>({ name: defaultName, birthMonth: '', birthDay: '', birthYear: '', height: '', weight: '' })
+  const updateGuest = (patch: Partial<GuestRow>) => setGuest(g => ({ ...g, ...patch }))
+  // ✅ NEW — routes every birthdate field change through clampBirthDay so an
+  // impossible day (Sept 31, Feb 30, Feb 29 outside a leap year) can never
+  // sit in the field — it's capped down automatically instead of only
+  // failing validation after the fact.
+  const updateBirthdate = (patch: Partial<GuestRow>) => updateGuest(clampBirthDay(guest, patch))
+  const maxBirthDay = (() => {
+    const m = parseInt(guest.birthMonth)
+    const y = parseInt(guest.birthYear)
+    return m >= 1 && m <= 12 ? daysInMonth(m, isNaN(y) ? 2000 : y) : 31
+  })()
+
+  const heightRangeLabel = minHeightCm != null && maxHeightCm != null
+    ? `${minHeightCm}-${maxHeightCm}cm` : minHeightCm != null ? `min ${minHeightCm}cm` : `max ${maxHeightCm}cm`
+  const ageRangeLabel = minAgeYears != null && maxAgeYears != null
+    ? `${minAgeYears}-${maxAgeYears}y` : minAgeYears != null ? `min ${minAgeYears}y` : `max ${maxAgeYears}y`
+  const weightRangeLabel = minWeightKg != null && maxWeightKg != null
+    ? `${minWeightKg}-${maxWeightKg}kg` : minWeightKg != null ? `min ${minWeightKg}kg` : `max ${maxWeightKg}kg`
+
+  const guestFails = (row: GuestRow): string[] => {
+    const fails: string[] = []
+    if (hasHeightRestriction) {
+      const h = parseInt(row.height)
+      if (!row.height || isNaN(h)) fails.push(heightRangeLabel)
+      else if ((minHeightCm != null && h < minHeightCm) || (maxHeightCm != null && h > maxHeightCm)) fails.push(heightRangeLabel)
+    }
+    if (hasAgeRestriction) {
+      const age = calcAge(birthDateISO(row))
+      if (age == null) fails.push(ageRangeLabel)
+      else if ((minAgeYears != null && age < minAgeYears) || (maxAgeYears != null && age > maxAgeYears)) fails.push(ageRangeLabel)
+    }
+    if (hasWeightRestriction) {
+      const w = parseInt(row.weight)
+      if (!row.weight || isNaN(w)) fails.push(weightRangeLabel)
+      else if ((minWeightKg != null && w < minWeightKg) || (maxWeightKg != null && w > maxWeightKg)) fails.push(weightRangeLabel)
+    }
+    return fails
+  }
+
+  const fails = guestFails(guest)
+  const age = calcAge(birthDateISO(guest))
+  const birthdateTyped = guest.birthMonth || guest.birthDay || guest.birthYear
+  const canSubmit = guest.name.trim().length > 0 && (!hasRestriction || fails.length === 0)
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl max-h-[85vh] overflow-y-auto">
+        <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-pink-100 text-pink-600">
+          <PackageCheck className="w-6 h-6" />
+        </div>
+        <div className="text-[15px] font-bold text-gray-900 mb-1">Book promo "{promoName}"?</div>
+        <div className="text-[12px] text-gray-500 mb-4">
+          Covering {rideCount} rides as one booking.
+          {hasRestriction && (
+            <span className="block mt-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+              Every ride in this promo requires you to be{' '}
+              {[hasHeightRestriction ? `${heightRangeLabel.replace('cm', ' cm tall').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null,
+                hasAgeRestriction ? `${ageRangeLabel.replace('y', ' years old').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null,
+                hasWeightRestriction ? `${weightRangeLabel.replace('kg', 'kg').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null]
+                .filter(Boolean).join(' and ')}.
+            </span>
+          )}
+        </div>
+
+        <div className="mb-3">
+          <div className="border border-gray-200 rounded-xl p-3">
+            <input
+              value={guest.name}
+              onChange={e => updateGuest({ name: e.target.value })}
+              placeholder="Guest name"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-pink-300"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              {hasHeightRestriction && (
+                <input type="number" min="0" value={guest.height}
+                  onChange={e => updateGuest({ height: e.target.value })}
+                  placeholder="Height (cm)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+              )}
+              <input type="number" min="0" value={guest.weight}
+                onChange={e => updateGuest({ weight: e.target.value })}
+                placeholder="Weight (kg)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+              {hasAgeRestriction && (
+                <div className="col-span-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <input type="number" min="1" max="12" placeholder="MM" value={guest.birthMonth}
+                      onChange={e => updateBirthdate({ birthMonth: e.target.value })}
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                    <input type="number" min="1" max={maxBirthDay} placeholder="DD" value={guest.birthDay}
+                      onChange={e => updateBirthdate({ birthDay: e.target.value })}
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                    <input type="number" min="1900" max={new Date().getFullYear()} placeholder="YYYY" value={guest.birthYear}
+                      onChange={e => updateBirthdate({ birthYear: e.target.value })}
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                  </div>
+                  <div className="text-[10px] text-gray-400 mt-1">
+                    Birthdate (month / day / year)
+                    {birthdateTyped ? ` — ${age != null ? `${age} years old` : 'invalid date'}` : ''}
+                  </div>
+                </div>
+              )}
+            </div>
+            {fails.length > 0 && (
+              <div className="text-[11px] text-red-600 mt-1.5">Doesn't meet requirement: {fails.join(', ')}</div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mb-4 pt-3 border-t border-gray-100">
+          <span className="text-xs text-gray-500">Total</span>
+          <span className="font-bold text-pink-600 text-sm">₱{fmt(price)}</span>
+        </div>
+
+        <div className="flex gap-2.5">
+          <button onClick={onCancel} disabled={loading}
+            className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm([{
+              guestName: guest.name.trim(),
+              ageYears: calcAge(birthDateISO(guest)) ?? undefined,
+              heightCm: guest.height ? parseInt(guest.height) : undefined,
+              weightKg: guest.weight ? parseInt(guest.weight) : undefined,
+            }])}
+            disabled={loading || !canSubmit}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60 transition-colors bg-pink-600 hover:bg-pink-700 text-white">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm booking'}
           </button>
         </div>
       </div>
@@ -571,7 +1064,18 @@ export function VisitorDashboard() {
   const [zoomSrc, setZoomSrc]           = useState<string|null>(null)
   const [cancelTarget, setCancelTarget] = useState<Booking|null>(null)
   const [cancelLoading, setCancelLoading] = useState(false)
-  const [bookTarget, setBookTarget]     = useState<{ scheduleId:number; rideName:string; date:string; time:string; price:number }|null>(null)
+  // ✅ NEW — OPTIONAL rating/comment on a completed + paid booking.
+  const [reviewTarget, setReviewTarget] = useState<Booking|null>(null)
+  const [reviewLoading, setReviewLoading] = useState(false)
+  // ✅ CHANGED — group bookings: bookTarget now also carries whatever's
+  // needed to render the guest-list step (how many seats are left, and
+  // whether this ride has a height/age restriction to collect/validate per guest).
+  const [bookTarget, setBookTarget]     = useState<{
+    scheduleId:number; rideName:string; date:string; time:string; price:number
+    availableSlots:number; minHeightCm?:number; maxHeightCm?:number
+    minAgeYears?:number; maxAgeYears?:number
+    minWeightKg?:number; maxWeightKg?:number
+  }|null>(null)
   const [bookingLoading, setBookingLoading] = useState(false)
 
   useEffect(() => { fetchRides() }, [rideParams])
@@ -626,12 +1130,15 @@ export function VisitorDashboard() {
   const promoHasSlots = (promo: RidePromo) =>
     promo.rides.every(r => r.availableSlots > 0 && r.scheduleStatus !== 'Cancelled')
 
-  const doBookPromo = async () => {
+  // ✅ CHANGED — group bookings: now takes the guest list collected in
+  // PromoGuestBookingModal and posts it alongside promoId, instead of a
+  // bare { promoId }.
+  const doBookPromo = async (guests: { guestName:string; ageYears?:number; heightCm?:number; weightKg?:number }[]) => {
     if (!promoBookTarget) return
     setPromoBookingLoading(true)
     try {
-      await bookingApi.bookPromo({ promoId: promoBookTarget.id })
-      toast.success(`Booked promo "${promoBookTarget.name}"!`)
+      await bookingApi.bookPromo({ promoId: promoBookTarget.id, guests })
+      toast.success(`Booked promo "${promoBookTarget.name}" for ${guests.length} guest(s)!`)
       setPromoBookTarget(null)
       setSelectedPromo(null)
       fetchBookings()
@@ -715,18 +1222,20 @@ export function VisitorDashboard() {
     finally { setBookLoading(false) }
   }
 
-  const doBook = async () => {
+  // ✅ CHANGED — group bookings: now takes the guest list collected in
+  // GuestBookingModal and posts it alongside the scheduleId, instead of a
+  // bare { scheduleId }.
+  const doBook = async (guests: { guestName:string; ageYears?:number; heightCm?:number }[]) => {
     if (!bookTarget) return
     setBookingLoading(true)
     try {
-      await api.post('/api/booking', { scheduleId: bookTarget.scheduleId })
-      toast.success(`Booked "${bookTarget.rideName}" on ${bookTarget.date}!`)
+      await api.post('/api/booking', { scheduleId: bookTarget.scheduleId, guests })
+      toast.success(`Booked "${bookTarget.rideName}" on ${bookTarget.date} for ${guests.length} guest(s)!`)
       setBookTarget(null)
       setSelectedRide(null)
       fetchBookings()
       fetchRides()
     } catch (e: any) {
-      setBookTarget(null)
       toast.error(getErrorMessage(e, 'Booking failed.'))
     } finally { setBookingLoading(false) }
   }
@@ -741,6 +1250,21 @@ export function VisitorDashboard() {
     } catch (e: any) {
       toast.error(getErrorMessage(e, 'Failed to cancel.'))
     } finally { setCancelLoading(false) }
+  }
+
+  // ✅ NEW — OPTIONAL rating/comment on a completed + paid booking. Never
+  // required — ReviewModal's "Not now" just closes this with no request sent.
+  const doSubmitReview = async (rating: number, comment: string) => {
+    if (!reviewTarget) return
+    setReviewLoading(true)
+    try {
+      await reviewApi.create({ bookingId: reviewTarget.id, rating, comment: comment || undefined })
+      toast.success('Thanks for your review!')
+      setReviewTarget(null)
+      fetchBookings()
+    } catch (e: any) {
+      toast.error(getErrorMessage(e, 'Failed to submit review.'))
+    } finally { setReviewLoading(false) }
   }
 
   const now = new Date()
@@ -873,7 +1397,17 @@ export function VisitorDashboard() {
                         </div>
                       </div>
                       <div className="p-4">
-                        <h4 className="font-bold text-gray-900 text-base mb-1 truncate">{ride.name}</h4>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <h4 className="font-bold text-gray-900 text-base truncate">{ride.name}</h4>
+                          {/* ✅ NEW — average rating from every OPTIONAL review
+                              left on a completed + paid booking for this ride. */}
+                          {ride.reviewCount > 0 && (
+                            <span className="flex items-center gap-0.5 text-xs font-semibold text-amber-600 flex-shrink-0">
+                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                              {ride.averageRating.toFixed(1)}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-400 line-clamp-2 mb-3 min-h-[2rem]">{ride.description ?? 'No description'}</p>
                         <div className="flex items-center gap-3 mb-3 text-xs text-gray-500">
                           <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />{ride.maxCapacity}</span>
@@ -997,7 +1531,14 @@ export function VisitorDashboard() {
                         rideName: selectedRide.name,
                         date: s.scheduleDate,
                         time: s.startTime?.slice(0,5) ?? '',
-                        price: selectedRide.price
+                        price: selectedRide.price,
+                        availableSlots: s.availableSlots,
+                        minHeightCm: selectedRide.minHeightCm,
+                        maxHeightCm: selectedRide.maxHeightCm,
+                        minAgeYears: selectedRide.minAgeYears,
+                        maxAgeYears: selectedRide.maxAgeYears,
+                        minWeightKg: selectedRide.minWeightKg,
+                        maxWeightKg: selectedRide.maxWeightKg
                       })}
                       disabled={s.availableSlots <= 0 || s.status !== 'Open'}
                       className="w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
@@ -1204,7 +1745,8 @@ export function VisitorDashboard() {
           <>
             <div className="divide-y divide-gray-50">
               {bookings.map(b => (
-                <div key={b.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 hover:bg-gray-50/60 transition-colors group">
+                <div key={b.id} className="flex flex-col px-4 sm:px-5 py-4 hover:bg-gray-50/60 transition-colors group">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
                   {b.promoId ? (
                     // ── Promo booking — ONE booking row covering 2+ rides ──
                     <div className="flex items-start gap-3 sm:contents">
@@ -1312,6 +1854,37 @@ export function VisitorDashboard() {
                       )}
                     </div>
                   </div>
+                  </div>
+                  {/* ✅ NEW — an OPTIONAL rating on a completed + paid ride
+                      booking (not available for Ride Promo bookings — a
+                      promo covers several rides at once). Sits on its own
+                      full-width row below the main booking info (outside the
+                      sm:flex-row wrapper above), so it never gets squeezed
+                      onto the price/paid-date line. Shows the submitted
+                      rating once left; otherwise a prominent, clickable
+                      prompt to leave one. */}
+                  {!b.promoId && b.status === 'Completed' && b.paymentStatus === 'Paid' && (
+                    b.review ? (
+                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+                        <div className="flex items-center gap-1 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 flex-shrink-0">
+                          <StarRatingDisplay rating={b.review.rating} />
+                        </div>
+                        <span className="text-[11px] text-gray-400">You rated this ride</span>
+                        {b.review.comment && (
+                          <span className="text-[11px] text-gray-400 truncate italic">— "{b.review.comment}"</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <button onClick={() => setReviewTarget(b)}
+                          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 active:scale-[0.98] border border-amber-200 rounded-xl text-amber-700 text-xs font-semibold transition-all shadow-sm">
+                          <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                          Leave a review
+                          <span className="text-amber-500 font-normal">(optional)</span>
+                        </button>
+                      </div>
+                    )
+                  )}
                 </div>
               ))}
             </div>
@@ -1335,11 +1908,22 @@ export function VisitorDashboard() {
       </div>
 
       {/* Confirm Book */}
+      {/* ✅ CHANGED — one ticket per booking (1:1): a single-guest modal
+          that collects a name (and age/height/weight, when the ride has a
+          restriction), no more multi-guest add/remove UI. */}
       {bookTarget && (
-        <ConfirmModal
-          title="Book this slot?"
-          message={`Book "${bookTarget.rideName}" on ${bookTarget.date} at ${bookTarget.time}? Price: ₱${fmt(bookTarget.price)}`}
-          confirmLabel="Yes, book now"
+        <GuestBookingModal
+          rideName={bookTarget.rideName}
+          date={bookTarget.date}
+          time={bookTarget.time}
+          price={bookTarget.price}
+          minHeightCm={bookTarget.minHeightCm}
+          maxHeightCm={bookTarget.maxHeightCm}
+          minAgeYears={bookTarget.minAgeYears}
+          maxAgeYears={bookTarget.maxAgeYears}
+          minWeightKg={bookTarget.minWeightKg}
+          maxWeightKg={bookTarget.maxWeightKg}
+          defaultName={user?.fullName ?? 'Guest'}
           onConfirm={doBook}
           onCancel={() => setBookTarget(null)}
           loading={bookingLoading}
@@ -1347,16 +1931,29 @@ export function VisitorDashboard() {
       )}
 
       {/* Confirm Book Promo */}
-      {promoBookTarget && (
-        <ConfirmModal
-          title="Book this promo?"
-          message={`Book "${promoBookTarget.name}" covering ${promoBookTarget.rides.length} rides as one booking? Price: ₱${fmt(promoBookTarget.price)}`}
-          confirmLabel="Yes, book now"
-          onConfirm={doBookPromo}
-          onCancel={() => setPromoBookTarget(null)}
-          loading={promoBookingLoading}
-        />
-      )}
+      {/* ✅ CHANGED — one ticket per booking (1:1): a single-guest modal
+          (like GuestBookingModal) that validates the guest against the
+          combined intersection of EVERY included ride's height/age/weight
+          restrictions. No more multi-guest add/remove UI. */}
+      {promoBookTarget && (() => {
+        const heightRange = combinePromoRange(promoBookTarget.rides, 'minHeightCm', 'maxHeightCm')
+        const ageRange = combinePromoRange(promoBookTarget.rides, 'minAgeYears', 'maxAgeYears')
+        const weightRange = combinePromoRange(promoBookTarget.rides, 'minWeightKg', 'maxWeightKg')
+        return (
+          <PromoGuestBookingModal
+            promoName={promoBookTarget.name}
+            rideCount={promoBookTarget.rides.length}
+            price={promoBookTarget.price}
+            minHeightCm={heightRange.min} maxHeightCm={heightRange.max}
+            minAgeYears={ageRange.min} maxAgeYears={ageRange.max}
+            minWeightKg={weightRange.min} maxWeightKg={weightRange.max}
+            defaultName={user?.fullName ?? 'Guest'}
+            onConfirm={doBookPromo}
+            onCancel={() => setPromoBookTarget(null)}
+            loading={promoBookingLoading}
+          />
+        )
+      })()}
 
       {/* Confirm Cancel */}
       {cancelTarget && (
@@ -1368,6 +1965,16 @@ export function VisitorDashboard() {
           onConfirm={doCancel}
           onCancel={() => setCancelTarget(null)}
           loading={cancelLoading}
+        />
+      )}
+
+      {/* Leave a review — OPTIONAL, never blocks anything */}
+      {reviewTarget && (
+        <ReviewModal
+          rideName={reviewTarget.rideName ?? 'this ride'}
+          onSubmit={doSubmitReview}
+          onCancel={() => setReviewTarget(null)}
+          loading={reviewLoading}
         />
       )}
 

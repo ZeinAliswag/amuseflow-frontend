@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, ZoomIn, X, Loader2, ChevronDown, Filter,
   SortAsc, SortDesc, Type, Banknote,
   FerrisWheel,
-  Maximize2
+  Maximize2, Ruler, Cake, Weight, Star
 } from 'lucide-react'
 import type { Ride, PaginationRequest } from '../../types'
 import api, { apiForm } from '../../services/api'
@@ -200,7 +200,16 @@ function ImageZoom({ src, onClose }: { src: string; onClose: () => void }) {
   )
 }
 
-const emptyForm = { name:'', description:'', maxCapacity:20, durationMinutes:5, price:'' as string | number }
+const emptyForm = {
+  name:'', description:'', maxCapacity:20, durationMinutes:5, price:'' as string | number,
+  // ✅ NEW — optional restrictions enforced per guest at booking time.
+  // Height is now an optional min-max range (e.g. 100–180), not just a floor.
+  minHeightCm:'' as string | number, maxHeightCm:'' as string | number,
+  // ✅ CHANGED — age is now an optional min-max range (e.g. 24–50), not just a floor.
+  minAgeYears:'' as string | number, maxAgeYears:'' as string | number,
+  // ✅ NEW — optional weight range restriction, same min/max pattern as age.
+  minWeightKg:'' as string | number, maxWeightKg:'' as string | number,
+}
 
 export default function AdminRidesPage() {
   const [rides, setRides]           = useState<Ride[]>([])
@@ -261,6 +270,12 @@ export default function AdminRidesPage() {
       maxCapacity: ride.maxCapacity,
       durationMinutes: ride.durationMinutes,
       price: Number(ride.price) || 0,  // ensure number
+      minHeightCm: ride.minHeightCm ?? '',
+      maxHeightCm: ride.maxHeightCm ?? '',
+      minAgeYears: ride.minAgeYears ?? '',
+      maxAgeYears: ride.maxAgeYears ?? '',
+      minWeightKg: ride.minWeightKg ?? '',
+      maxWeightKg: ride.maxWeightKg ?? '',
     })
     setImageFile(null)
     setImagePreview(ride.imagePath ? getImageUrl(ride.imagePath)! : '')
@@ -281,6 +296,16 @@ export default function AdminRidesPage() {
     if (!form.name)           { setFormErr('Ride name is required.'); return }
     if (isNaN(priceNum) || priceNum < 0) { setFormErr('Please enter a valid price.'); return }
     if (!editRide && !imageFile) { setFormErr('Image is required for new rides.'); return }
+    // ✅ NEW — sanity-check the restriction ranges before submitting.
+    if (form.minHeightCm !== '' && form.maxHeightCm !== '' && Number(form.minHeightCm) > Number(form.maxHeightCm)) {
+      setFormErr('Min height can\'t be greater than max height.'); return
+    }
+    if (form.minAgeYears !== '' && form.maxAgeYears !== '' && Number(form.minAgeYears) > Number(form.maxAgeYears)) {
+      setFormErr('Min age can\'t be greater than max age.'); return
+    }
+    if (form.minWeightKg !== '' && form.maxWeightKg !== '' && Number(form.minWeightKg) > Number(form.maxWeightKg)) {
+      setFormErr('Min weight can\'t be greater than max weight.'); return
+    }
     setSaving(true)
     try {
       const fd = new FormData()
@@ -289,6 +314,15 @@ export default function AdminRidesPage() {
       fd.append('maxCapacity',     String(form.maxCapacity))
       fd.append('durationMinutes', String(form.durationMinutes))
       fd.append('price',           String(priceNum))
+      // ✅ NEW — optional restrictions enforced per guest at booking time.
+      // Only send a value when the admin actually entered one — an empty
+      // string means "no restriction" and should stay null server-side.
+      if (form.minHeightCm !== '' && form.minHeightCm != null) fd.append('minHeightCm', String(form.minHeightCm))
+      if (form.maxHeightCm !== '' && form.maxHeightCm != null) fd.append('maxHeightCm', String(form.maxHeightCm))
+      if (form.minAgeYears !== '' && form.minAgeYears != null) fd.append('minAgeYears', String(form.minAgeYears))
+      if (form.maxAgeYears !== '' && form.maxAgeYears != null) fd.append('maxAgeYears', String(form.maxAgeYears))
+      if (form.minWeightKg !== '' && form.minWeightKg != null) fd.append('minWeightKg', String(form.minWeightKg))
+      if (form.maxWeightKg !== '' && form.maxWeightKg != null) fd.append('maxWeightKg', String(form.maxWeightKg))
       if (imageFile) fd.append('file', imageFile)
 
       if (editRide) {
@@ -415,8 +449,58 @@ export default function AdminRidesPage() {
 
                   {/* Content */}
                   <div className="p-4">
-                    <h3 className="font-bold text-gray-900 text-[14px] mb-1 truncate">{ride.name}</h3>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <h3 className="font-bold text-gray-900 text-[14px] truncate">{ride.name}</h3>
+                      {/* ✅ NEW — average rating from every OPTIONAL review
+                          left on a completed + paid booking for this ride. */}
+                      {ride.reviewCount > 0 && (
+                        <span className="flex items-center gap-0.5 text-xs font-semibold text-amber-600 flex-shrink-0">
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          {ride.averageRating.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400 line-clamp-2 mb-3 min-h-[2rem]">{ride.description ?? 'No description'}</p>
+
+                    {/* ✅ CHANGED — restriction badges, only shown when the
+                        ride actually has a height, age, and/or weight
+                        requirement. Split into one chip per metric (instead
+                        of one flat string) so each is scannable at a glance,
+                        color-coded by type, with a hover tooltip explaining
+                        that a guest must meet ALL of the ones shown. Age/
+                        weight render as a range when both ends are set, or
+                        an open-ended "X+"/"up to X" otherwise. */}
+                    {(ride.minHeightCm != null || ride.maxHeightCm != null
+                      || ride.minAgeYears != null || ride.maxAgeYears != null
+                      || ride.minWeightKg != null || ride.maxWeightKg != null) && (
+                      <div className="flex items-center gap-1.5 flex-wrap mb-3"
+                        title="Every guest in the party must meet all of these to book this ride">
+                        {(ride.minHeightCm != null || ride.maxHeightCm != null) && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-1 cursor-default">
+                            <Ruler className="w-3 h-3" />
+                            {ride.minHeightCm != null && ride.maxHeightCm != null
+                              ? `${ride.minHeightCm}-${ride.maxHeightCm}cm`
+                              : ride.minHeightCm != null ? `${ride.minHeightCm}cm+` : `Up to ${ride.maxHeightCm}cm`}
+                          </span>
+                        )}
+                        {(ride.minAgeYears != null || ride.maxAgeYears != null) && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-1 cursor-default">
+                            <Cake className="w-3 h-3" />
+                            {ride.minAgeYears != null && ride.maxAgeYears != null
+                              ? `${ride.minAgeYears}-${ride.maxAgeYears}y`
+                              : ride.minAgeYears != null ? `${ride.minAgeYears}y+` : `Up to ${ride.maxAgeYears}y`}
+                          </span>
+                        )}
+                        {(ride.minWeightKg != null || ride.maxWeightKg != null) && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2 py-1 cursor-default">
+                            <Weight className="w-3 h-3" />
+                            {ride.minWeightKg != null && ride.maxWeightKg != null
+                              ? `${ride.minWeightKg}-${ride.maxWeightKg}kg`
+                              : ride.minWeightKg != null ? `${ride.minWeightKg}kg+` : `Up to ${ride.maxWeightKg}kg`}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Stats row */}
                     <div className="flex items-center justify-between mb-4">
@@ -590,6 +674,64 @@ export default function AdminRidesPage() {
                   <input type="number" min="1" value={form.durationMinutes ?? 5}
                     onChange={e => setForm({...form, durationMinutes: parseInt(e.target.value)})}
                     required
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                </div>
+              </div>
+
+              {/* ✅ CHANGED — height is now an optional min-max range (e.g.
+                  100–180) instead of just a floor. Leave either side blank
+                  for an open-ended range ("100cm and up", "up to 130cm", etc). */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Min. height (cm)</label>
+                  <input type="number" min="0" value={form.minHeightCm}
+                    onChange={e => setForm({...form, minHeightCm: e.target.value})}
+                    placeholder="No restriction"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Max. height (cm)</label>
+                  <input type="number" min="0" value={form.maxHeightCm}
+                    onChange={e => setForm({...form, maxHeightCm: e.target.value})}
+                    placeholder="No restriction"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                </div>
+              </div>
+
+              {/* ✅ CHANGED — age is now an optional min-max range (e.g. 24–50)
+                  instead of just a floor. Leave either side blank for an
+                  open-ended range ("18 and up", "up to 12", etc). */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Min. age (years)</label>
+                  <input type="number" min="0" value={form.minAgeYears}
+                    onChange={e => setForm({...form, minAgeYears: e.target.value})}
+                    placeholder="No restriction"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Max. age (years)</label>
+                  <input type="number" min="0" value={form.maxAgeYears}
+                    onChange={e => setForm({...form, maxAgeYears: e.target.value})}
+                    placeholder="No restriction"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                </div>
+              </div>
+
+              {/* ✅ NEW — optional weight range restriction, same min/max pattern as age. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Min. weight (kg)</label>
+                  <input type="number" min="0" value={form.minWeightKg}
+                    onChange={e => setForm({...form, minWeightKg: e.target.value})}
+                    placeholder="No restriction"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Max. weight (kg)</label>
+                  <input type="number" min="0" value={form.maxWeightKg}
+                    onChange={e => setForm({...form, maxWeightKg: e.target.value})}
+                    placeholder="No restriction"
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
                 </div>
               </div>

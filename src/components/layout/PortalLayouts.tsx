@@ -5,7 +5,7 @@ import {
   Calendar, CheckCircle2, Filter, Bell, CheckCheck,
   Circle, Pencil, Lock, Ticket, UserCog, ClipboardList,
   Search, ChevronLeft, ChevronRight, CalendarDays, Tag, FileText, User, Clock,
-  XCircle, Wallet, PartyPopper
+  XCircle, Wallet, PartyPopper, Star
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import api, { notificationApi } from '../../services/api'
@@ -246,11 +246,22 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 // vanish from the dropdown itself — filtering one module made every other
 // module look like it no longer existed as a choice.
 const MODULE_OPTS = ['Booking', 'User']
+// ✅ NEW — Review only ever applies to Visitors (only they can leave a
+// review), so it's kept out of the Ride Attendant's module list entirely
+// rather than showing an option that would always return zero results.
+const VISITOR_MODULE_OPTS = ['Booking', 'User', 'Review']
 
-// Matches the palette used on the admin Logs page (Logs.tsx).
+// Matches the palette used on the admin Logs page (Logs.tsx), plus Review
+// (Visitor-only). Yellow — true yellow, not amber/orange — is otherwise
+// completely unused in the app, so it doesn't collide with amber=Schedule
+// (admin) + the Ride Attendant portal's accent color, or orange=weight
+// restriction. Also distinct from green=Booking, blue=User, purple=Ride
+// (admin), pink=Ride Promo, indigo=Admin role, teal=CallTimeBadge,
+// sky=height restriction, violet=age restriction.
 const moduleColor = (m: string) => {
   if (m === 'Booking')  return { bg: 'bg-green-100',  text: 'text-green-700',  border: 'border-green-200' }
   if (m === 'User')     return { bg: 'bg-blue-100',   text: 'text-blue-700',   border: 'border-blue-200' }
+  if (m === 'Review')   return { bg: 'bg-yellow-200', text: 'text-yellow-900', border: 'border-yellow-300' }
   return { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' }
 }
 
@@ -258,18 +269,45 @@ function ModuleIcon({ m, size = 'sm' }: { m: string; size?: 'sm' | 'lg' }) {
   const cls = size === 'lg' ? 'w-5 h-5' : 'w-4 h-4'
   if (m === 'Booking')  return <Ticket        className={`${cls} text-green-600`} />
   if (m === 'User')     return <UserCog       className={`${cls} text-blue-600`} />
+  if (m === 'Review')   return <Star          className={`${cls} text-yellow-700`} />
   return <ClipboardList className={`${cls} text-gray-500`} />
 }
 
+// ✅ CHANGED — Facebook-style compact relative time ("1w" instead of "7d
+// ago"), used on both the Notifications dropdown and Activity logs panel.
 function timeAgo(dateStr: string) {
   const diffMs = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diffMs / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return 'now'
+  if (mins < 60) return `${mins}m`
   const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
+  if (hrs < 24) return `${hrs}h`
   const days = Math.floor(hrs / 24)
-  return `${days}d ago`
+  if (days < 7) return `${days}d`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 4) return `${weeks}w`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo`
+  const years = Math.floor(days / 365)
+  return `${years}y`
+}
+
+// ✅ NEW — Facebook-style shimmering skeleton rows shown while a
+// notification/activity list is loading, instead of a lone spinner.
+function SkeletonRows({ count = 3 }: { count?: number }) {
+  return (
+    <div className="px-4 py-2 space-y-4 animate-pulse">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0" />
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="h-2.5 rounded-full bg-gray-200 w-full" />
+            <div className="h-2.5 rounded-full bg-gray-200 w-2/3" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function groupLogsByDate(logs: ActivityLog[]) {
@@ -768,15 +806,13 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
               computed from that same shrunken list, "User" disappeared from
               the dropdown itself the moment you filtered — you couldn't even
               switch back to it without clearing the filter first. */}
-          <ModuleCombobox value={moduleFilter} options={MODULE_OPTS} onChange={setModuleFilter} />
+          <ModuleCombobox value={moduleFilter} options={role === 'Visitor' ? VISITOR_MODULE_OPTS : MODULE_OPTS} onChange={setModuleFilter} />
           <DateRangeButton from={dateFrom} to={dateTo} onClick={() => setDateModalOpen(true)} />
         </div>
 
         <div className="overflow-y-auto flex-1">
           {loading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
-            </div>
+            <SkeletonRows count={5} />
           ) : logs.length === 0 ? (
             <div className="flex flex-col items-center py-10 text-gray-400">
               <History className="w-10 h-10 mb-2 text-gray-200" />
@@ -793,29 +829,27 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
                   </div>
                 </div>
                 <div className="px-2 py-1">
+                  {/* ✅ CHANGED — Facebook-style row: circular avatar on the
+                      left, bold title, module pill + compact time ("1w")
+                      directly beneath it, then the detail line. */}
                   {items.map(log => {
                     const c = moduleColor(log.module)
                     return (
                       <div key={log.id}
-                        className="flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer group"
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
                         onClick={() => setViewLog(log)}>
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${c.bg}`}>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${c.bg}`}>
                           <ModuleIcon m={log.module} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                          <p className="text-[13px] font-semibold text-gray-900 leading-snug truncate">{log.action}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
                             <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${c.bg} ${c.text} ${c.border}`}>
                               {log.module}
                             </span>
-                            <span className="text-[13px] font-semibold text-gray-900">{log.action}</span>
+                            <span className="text-[11px] text-gray-400 font-medium">{timeAgo(log.createdAt)}</span>
                           </div>
-                          <div className="text-[11px] text-gray-500 truncate">{log.details ? formatDetails(log.details) : 'No details'}</div>
-                        </div>
-                        <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-                          <span className="text-[10px] text-gray-400 whitespace-nowrap">{timeAgo(log.createdAt)}</span>
-                          <span className="text-[10px] text-blue-500 font-medium opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                            View →
-                          </span>
+                          <div className="text-[11px] text-gray-500 truncate mt-0.5">{log.details ? formatDetails(log.details) : 'No details'}</div>
                         </div>
                       </div>
                     )
@@ -991,9 +1025,7 @@ function NotificationBell() {
 
             <div className="overflow-y-auto flex-1">
               {loading ? (
-                <div className="flex items-center justify-center py-14">
-                  <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-                </div>
+                <SkeletonRows count={5} />
               ) : visibleNotifications.length === 0 ? (
                 <div className="flex flex-col items-center py-14 text-gray-400">
                   <div className="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center mb-3">

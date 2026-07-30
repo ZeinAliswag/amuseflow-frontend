@@ -73,12 +73,26 @@ export interface Ride {
   durationMinutes: number
   price: number
   imagePath?: string
+  // ✅ NEW — optional restrictions enforced per guest at booking time.
+  // Height can now be a range (e.g. 100–180) instead of just a floor.
+  minHeightCm?: number
+  maxHeightCm?: number
+  minAgeYears?: number
+  // ✅ NEW — age can now be a range (e.g. 24–50) instead of just a floor.
+  maxAgeYears?: number
+  // ✅ NEW — optional weight range restriction, same min/max pattern as age.
+  minWeightKg?: number
+  maxWeightKg?: number
   isDeleted: boolean
   // ✅ NEW — true while this ride has at least one Open or Full schedule
   // (upcoming, still-open-today, or currently in progress). Backend also
   // enforces this on delete (RideService.DeleteAsync) — this just lets the
   // UI disable the button proactively instead of surfacing a toast error.
   hasActiveSchedule: boolean
+  // ✅ NEW — aggregated from every OPTIONAL review left on a completed +
+  // paid booking for this ride. 0/0 when the ride has no reviews yet.
+  averageRating: number
+  reviewCount: number
   createdAt: string
   updatedAt: string
 }
@@ -119,6 +133,16 @@ export interface PromoRideItem {
   availableSlots: number
   maxSlots: number
   scheduleStatus: string
+
+  // ✅ NEW — this ride's own optional restrictions, carried along so a
+  // promo booking can be validated against EVERY ride bundled in it (a
+  // guest must qualify for all of them, not just one). Same fields as Ride.
+  minHeightCm?: number
+  maxHeightCm?: number
+  minAgeYears?: number
+  maxAgeYears?: number
+  minWeightKg?: number
+  maxWeightKg?: number
 }
 
 export interface RidePromo {
@@ -153,6 +177,32 @@ export interface BookingPromoItem {
   endTime: string
 }
 
+// One guest/seat included in a booking (group bookings) — a plain
+// single-seat booking still has exactly one of these, defaulting to the
+// visitor's own name.
+export interface BookingGuest {
+  id: number
+  guestName: string
+  ageYears?: number
+  heightCm?: number
+  // ✅ NEW — validated against the ride's optional Min/MaxWeightKg range.
+  weightKg?: number
+}
+
+// A visitor's OPTIONAL rating/comment left on a completed + paid booking.
+export interface Review {
+  id: number
+  bookingId: number
+  rideId: number
+  rideName?: string
+  visitorId: number
+  visitorName?: string
+  visitorUsername?: string
+  rating: number
+  comment?: string
+  createdAt: string
+}
+
 // ── Booking ───────────────────────────────────────────────────
 export interface Booking {
   id: number
@@ -161,6 +211,9 @@ export interface Booking {
   visitorUsername?: string
   visitorContactNumber?: string
   scheduleId?: number       // ✅ CHANGED — optional: absent/null for promo bookings
+  // ✅ NEW — the ride this booking is for (regular bookings only, null for
+  // promo bookings) — backs the optional review feature.
+  rideId?: number
   rideName?: string
   rideDescription?: string  // ✅ NEW
   ridePrice?: number
@@ -175,6 +228,14 @@ export interface Booking {
   promoName?: string
   promoImagePath?: string
   includedRides?: BookingPromoItem[]
+
+  // ✅ NEW — group bookings: one entry per guest/seat under this booking.
+  guests?: BookingGuest[]
+
+  // ✅ NEW — null until the visitor optionally leaves a rating/comment on
+  // this booking (only possible once it's Completed + Paid, and only for
+  // regular, non-promo bookings).
+  review?: Review
 
   bookingCode: string
   status: string
