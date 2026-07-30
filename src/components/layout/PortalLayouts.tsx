@@ -46,8 +46,7 @@ function LogoutConfirmModal({ loading, onConfirm, onCancel }: {
   loading: boolean; onConfirm: () => void; onCancel: () => void
 }) {
   return (
-    <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4"
-      onClick={e => e.target === e.currentTarget && !loading && onCancel()}>
+    <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
         <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4">
           <LogOut className="w-6 h-6" />
@@ -152,7 +151,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2.5">
@@ -576,8 +575,7 @@ function DateRangeModal({ from, to, onApply, onClose }: {
   const isActivePreset = (f: string, t: string) => tempFrom === f && tempTo === t
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-[120] flex items-center justify-center p-4"
-      onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-black/40 z-[120] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2.5">
@@ -660,8 +658,7 @@ function ActivityDetailModal({ log, onClose, role }: { log: ActivityLog; onClose
   // Attendant — a visitor should see their own booking codes in full.
   const formatDetails = (d: string) => role === 'Ride Attendant' ? maskBookingCodesInText(d) : d
   return (
-    <div className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-4"
-      onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2.5">
@@ -772,7 +769,7 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
   const grouped = groupLogsByDate(logs)
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2.5">

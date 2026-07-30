@@ -187,14 +187,13 @@ function ConfirmModal({ title, message, confirmLabel, danger, onConfirm, onCance
 // ── Image Zoom Overlay ─────────────────────────────────────────
 function ImageZoom({ src, onClose }: { src: string; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4"
-      onClick={onClose}>
+    <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
       <div className="relative max-w-2xl max-h-[80vh]">
         <button onClick={onClose}
           className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors z-10">
           <X className="w-4 h-4 text-gray-700" />
         </button>
-        <img src={src} alt="Ride" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
+        <img src={src} alt="Ride" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" />
       </div>
     </div>
   )
@@ -225,7 +224,6 @@ export default function AdminRidesPage() {
   const [imageFile, setImageFile]   = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState('')
   const [saving, setSaving]         = useState(false)
-  const [formErr, setFormErr]       = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   // confirm delete
   const [deleteTarget, setDeleteTarget] = useState<Ride | null>(null)
@@ -259,7 +257,7 @@ export default function AdminRidesPage() {
 
   const openCreate = () => {
     setEditRide(null); setForm({ ...emptyForm })
-    setImageFile(null); setImagePreview(''); setFormErr(''); setModalOpen(true)
+    setImageFile(null); setImagePreview(''); setModalOpen(true)
   }
 
   const openEdit = (ride: Ride) => {
@@ -279,7 +277,7 @@ export default function AdminRidesPage() {
     })
     setImageFile(null)
     setImagePreview(ride.imagePath ? getImageUrl(ride.imagePath)! : '')
-    setFormErr(''); setModalOpen(true)
+    setModalOpen(true)
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -291,18 +289,19 @@ export default function AdminRidesPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    setFormErr('')
     const priceNum = parseFloat(String(form.price))
-    if (!form.name)           { setFormErr('Ride name is required.'); return }
-    if (isNaN(priceNum) || priceNum < 0) { setFormErr('Please enter a valid price.'); return }
-    if (!editRide && !imageFile) { setFormErr('Image is required for new rides.'); return }
+    if (!form.name)           { toast.error('Ride name is required.'); return }
+    if (isNaN(priceNum) || priceNum < 0) { toast.error('Please enter a valid price.'); return }
+    if (!editRide && !imageFile) { toast.error('Image is required for new rides.'); return }
     // ✅ NEW — mirrors the backend's [Range] DataAnnotations on
     // CreateRideRequest exactly, so an out-of-range value (e.g. a 345cm
     // max height) is caught here with the same wording instead of round-
     // tripping to the server and coming back as a generic "Failed to save
     // ride." — the server-side check still runs too (see catch block
     // below), this is just to fail fast with the real message.
-    const fail = (msg: string) => { setFormErr(msg); toast.error(msg); return true }
+    // ✅ CHANGED — validation errors now surface as a toast only (no more
+    // inline red banner in the modal), per request.
+    const fail = (msg: string) => { toast.error(msg); return true }
     if (form.minHeightCm !== '' && (Number(form.minHeightCm) < 50 || Number(form.minHeightCm) > 250)) {
       if (fail('Minimum height must be between 50 and 250 cm.')) return
     }
@@ -366,7 +365,6 @@ export default function AdminRidesPage() {
       // real per-field text out of `.errors` so the admin sees exactly
       // which value is invalid instead of a generic "Failed to save ride."
       const msg = extractApiError(e, 'Failed to save ride.')
-      setFormErr(msg)
       toast.error(msg)
     } finally {
       setSaving(false)
@@ -619,9 +617,11 @@ export default function AdminRidesPage() {
       </div>
 
       {/* Create/Edit Modal */}
+      {/* ✅ CHANGED — no more click-outside-to-close: an accidental click on
+          the backdrop (e.g. missing a button) used to exit the whole form.
+          Now the modal only closes via the explicit X button or Cancel. */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-          onClick={e => e.target === e.currentTarget && setModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 sticky top-0 bg-white z-10">
               <div className="flex items-center gap-3">
@@ -768,10 +768,6 @@ export default function AdminRidesPage() {
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
                 </div>
               </div>
-
-              {formErr && (
-                <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">⚠ {formErr}</div>
-              )}
 
               <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
                 <button type="button" onClick={() => setModalOpen(false)}

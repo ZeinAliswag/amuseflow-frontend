@@ -36,8 +36,7 @@ function LogoutConfirmModal({ loading, onConfirm, onCancel }: {
   loading: boolean; onConfirm: () => void; onCancel: () => void
 }) {
   return (
-    <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4"
-      onClick={e => e.target === e.currentTarget && !loading && onCancel()}>
+    <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
         <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4">
           <LogOut className="w-6 h-6" />
