@@ -348,15 +348,18 @@ export default function AdminRidesPage() {
     if (form.maxWeightKg !== '' && (Number(form.maxWeightKg) < bounds.maxWeightFloorKg || Number(form.maxWeightKg) > bounds.maxWeightCeilingKg)) {
       if (fail(`Maximum weight must be between ${bounds.maxWeightFloorKg} and ${bounds.maxWeightCeilingKg} kg.`)) return
     }
-    // ✅ sanity-check the restriction ranges before submitting.
-    if (form.minHeightCm !== '' && form.maxHeightCm !== '' && Number(form.minHeightCm) > Number(form.maxHeightCm)) {
-      if (fail('Min height can\'t be greater than max height.')) return
+    // ✅ CHANGED — sanity-check the restriction ranges before submitting.
+    // Was `>` only, which let Min == Max slip through (e.g. Min age 10,
+    // Max age 10) — a real range needs Min strictly less than Max, so this
+    // is now `>=`.
+    if (form.minHeightCm !== '' && form.maxHeightCm !== '' && Number(form.minHeightCm) >= Number(form.maxHeightCm)) {
+      if (fail('Min height must be less than max height.')) return
     }
-    if (form.minAgeYears !== '' && form.maxAgeYears !== '' && Number(form.minAgeYears) > Number(form.maxAgeYears)) {
-      if (fail('Min age can\'t be greater than max age.')) return
+    if (form.minAgeYears !== '' && form.maxAgeYears !== '' && Number(form.minAgeYears) >= Number(form.maxAgeYears)) {
+      if (fail('Min age must be less than max age.')) return
     }
-    if (form.minWeightKg !== '' && form.maxWeightKg !== '' && Number(form.minWeightKg) > Number(form.maxWeightKg)) {
-      if (fail('Min weight can\'t be greater than max weight.')) return
+    if (form.minWeightKg !== '' && form.maxWeightKg !== '' && Number(form.minWeightKg) >= Number(form.maxWeightKg)) {
+      if (fail('Min weight must be less than max weight.')) return
     }
     setSaving(true)
     try {
