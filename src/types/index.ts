@@ -306,7 +306,7 @@ export interface Notification {
   recipientUsername?: string
   recipientRole?: string
 }
-add 
+
 // ── Settings (admin-configurable Ride restriction bounds) ──────
 // Replaces what used to be hardcoded [Range] DataAnnotations on
 // CreateRideRequest — each pair is the allowed floor/ceiling for the
