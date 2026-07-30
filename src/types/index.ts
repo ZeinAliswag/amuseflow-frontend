@@ -190,10 +190,12 @@ export interface BookingGuest {
 }
 
 // A visitor's OPTIONAL rating/comment left on a completed + paid booking.
+// ✅ CHANGED — rideId is now optional: null for a Ride Promo booking's
+// review (one review for the whole bundle, no single ride to attach it to).
 export interface Review {
   id: number
   bookingId: number
-  rideId: number
+  rideId?: number
   rideName?: string
   visitorId: number
   visitorName?: string

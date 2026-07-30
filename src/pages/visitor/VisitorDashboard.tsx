@@ -1855,21 +1855,26 @@ export function VisitorDashboard() {
                     </div>
                   </div>
                   </div>
-                  {/* ✅ NEW — an OPTIONAL rating on a completed + paid ride
-                      booking (not available for Ride Promo bookings — a
-                      promo covers several rides at once). Sits on its own
+                  {/* ✅ CHANGED — an OPTIONAL rating on a completed + paid
+                      booking, regular ride OR Ride Promo alike. A promo
+                      booking gets exactly ONE review for the whole bundle
+                      (not one per included ride) — the backend leaves that
+                      review's RideId null so it never counts toward any
+                      single ride's average rating. Sits on its own
                       full-width row below the main booking info (outside the
                       sm:flex-row wrapper above), so it never gets squeezed
                       onto the price/paid-date line. Shows the submitted
                       rating once left; otherwise a prominent, clickable
                       prompt to leave one. */}
-                  {!b.promoId && b.status === 'Completed' && b.paymentStatus === 'Paid' && (
+                  {b.status === 'Completed' && b.paymentStatus === 'Paid' && (
                     b.review ? (
                       <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
                         <div className="flex items-center gap-1 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 flex-shrink-0">
                           <StarRatingDisplay rating={b.review.rating} />
                         </div>
-                        <span className="text-[11px] text-gray-400">You rated this ride</span>
+                        <span className="text-[11px] text-gray-400">
+                          {b.promoId ? 'You rated this promo' : 'You rated this ride'}
+                        </span>
                         {b.review.comment && (
                           <span className="text-[11px] text-gray-400 truncate italic">— "{b.review.comment}"</span>
                         )}
@@ -1971,7 +1976,7 @@ export function VisitorDashboard() {
       {/* Leave a review — OPTIONAL, never blocks anything */}
       {reviewTarget && (
         <ReviewModal
-          rideName={reviewTarget.rideName ?? 'this ride'}
+          rideName={reviewTarget.promoId ? (reviewTarget.promoName ?? 'this promo') : (reviewTarget.rideName ?? 'this ride')}
           onSubmit={doSubmitReview}
           onCancel={() => setReviewTarget(null)}
           loading={reviewLoading}
