@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
-  Settings as SettingsIcon, ChevronDown, Ruler, Cake, Weight,
-  Save, Loader2, FerrisWheel, ArrowDownToLine, ArrowUpToLine, Minus, Plus
+  ChevronDown, Save, Loader2, FerrisWheel,
+  ArrowDownToLine, ArrowUpToLine, Minus, Plus
 } from 'lucide-react'
 import type { RideValidationSettings } from '../../types'
 import { settingsApi, extractApiError } from '../../services/api'
@@ -117,7 +117,7 @@ function BoundRow({ label, floorKey, ceilingKey, unit, form, onChange, disabled 
       </div>
       <div className="flex items-center gap-3 flex-1">
         <StepperInput
-          pillLabel="Floor"
+          pillLabel="Lowest allowed"
           icon={<ArrowDownToLine className="w-3 h-3" />}
           tone="sky"
           value={form[floorKey]}
@@ -127,7 +127,7 @@ function BoundRow({ label, floorKey, ceilingKey, unit, form, onChange, disabled 
         />
         <span className="text-gray-300 mt-4">–</span>
         <StepperInput
-          pillLabel="Ceiling"
+          pillLabel="Highest allowed"
           icon={<ArrowUpToLine className="w-3 h-3" />}
           tone="rose"
           value={form[ceilingKey]}
@@ -183,14 +183,22 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  // ✅ NEW — a snapshot of the last loaded/saved values, so the Save button
+  // can stay disabled until the admin has actually changed something. Kept
+  // in sync with `form` right after every successful fetch/save.
+  const [savedForm, setSavedForm] = useState<FormState>(EMPTY_FORM)
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
+
+  const hasChanges = (Object.keys(form) as FieldKey[]).some(key => form[key] !== savedForm[key])
 
   const fetchSettings = async () => {
     setLoading(true)
     try {
       const res = await settingsApi.getRideValidation()
       const data: RideValidationSettings = res.data?.data ?? res.data
-      setForm(toForm(data))
+      const next = toForm(data)
+      setForm(next)
+      setSavedForm(next)
       setUpdatedAt(data.updatedAt ?? null)
     } catch (e: any) {
       toast.error(extractApiError(e, 'Failed to load ride validation settings.'))
@@ -221,11 +229,11 @@ export default function AdminSettingsPage() {
       const floor = Number(form[floorKey])
       const ceiling = Number(form[ceilingKey])
       if (form[floorKey] === '' || form[ceilingKey] === '' || isNaN(floor) || isNaN(ceiling)) {
-        toast.error(`${label} floor and ceiling are required.`)
+        toast.error(`${label}: both the lowest and highest allowed values are required.`)
         return
       }
       if (ceiling <= floor) {
-        toast.error(`${label} ceiling must be greater than its floor.`)
+        toast.error(`${label}: the highest allowed value must be greater than the lowest.`)
         return
       }
     }
@@ -238,7 +246,9 @@ export default function AdminSettingsPage() {
       }
       const res = await settingsApi.updateRideValidation(payload)
       const data: RideValidationSettings = res.data?.data ?? res.data
-      setForm(toForm(data))
+      const next = toForm(data)
+      setForm(next)
+      setSavedForm(next)
       setUpdatedAt(data.updatedAt ?? null)
       toast.success('Ride validation settings updated successfully.')
     } catch (e: any) {
@@ -267,7 +277,7 @@ export default function AdminSettingsPage() {
       ) : (
         <AccordionSection
           title="Ride Validations"
-          subtitle="Allowed floor/ceiling bounds for each ride restriction field"
+          subtitle="Lowest and highest allowed values for each ride restriction field"
           icon={<FerrisWheel className="w-5 h-5" />}
           open={open}
           onToggle={() => setOpen(p => !p)}
@@ -287,8 +297,8 @@ export default function AdminSettingsPage() {
             </div>
             <button
               onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60"
+              disabled={saving || !hasChanges}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Save changes
@@ -296,14 +306,6 @@ export default function AdminSettingsPage() {
           </div>
         </AccordionSection>
       )}
-
-      {/* Legend of the icons used per field, purely decorative context */}
-      <div className="flex items-center gap-4 text-xs text-gray-400 px-1">
-        <span className="flex items-center gap-1"><Ruler className="w-3.5 h-3.5" /> Height</span>
-        <span className="flex items-center gap-1"><Cake className="w-3.5 h-3.5" /> Age</span>
-        <span className="flex items-center gap-1"><Weight className="w-3.5 h-3.5" /> Weight</span>
-        <span className="flex items-center gap-1 ml-auto"><SettingsIcon className="w-3.5 h-3.5" /> More settings sections coming soon</span>
-      </div>
     </div>
   )
 }
