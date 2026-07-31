@@ -449,7 +449,7 @@ function PromoRidesModal({ promo, onClose }: { promo: RidePromo; onClose: () => 
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="min-w-0">
             <div className="font-bold text-gray-900 text-sm truncate">{promo.name}</div>
-            <div className="text-xs text-gray-400">{promo.rides.length} rides included · {fmtDate(promo.promoDate)}</div>
+            <div className="text-xs text-gray-400">{promo.rides.length} attractions included · {fmtDate(promo.promoDate)}</div>
           </div>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors flex-shrink-0">
             <X className="w-4 h-4" />
@@ -616,7 +616,7 @@ function ImageZoom({ src, onClose }: { src: string; onClose: () => void }) {
           className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors z-10">
           <X className="w-4 h-4 text-gray-700" />
         </button>
-        <img src={src} alt="Promo" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
+        <img src={src} alt="Attraction Bundle" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
       </div>
     </div>
   )
@@ -685,7 +685,7 @@ export default function AdminPromosPage() {
       const d = res.data?.data?.data ?? res.data?.data ?? res.data ?? []
       const list: Ride[] = Array.isArray(d) ? d : []
       setAllRides(list.filter(r => !r.isDeleted))
-    } catch { toast.error('Failed to load rides list.') }
+    } catch { toast.error('Failed to load attractions list.') }
   }
 
   const fetchSchedules = async () => {
@@ -733,7 +733,7 @@ export default function AdminPromosPage() {
       setPromos(list)
       const pg = (res.data as any)?.data?.pagination ?? (res.data as any)?.pagination
       if (pg) setPagination(pg)
-    } catch { toast.error('Failed to load ride promos.') }
+    } catch { toast.error('Failed to load attraction bundles.') }
     finally { setLoading(false) }
   }
 
@@ -823,14 +823,14 @@ export default function AdminPromosPage() {
     e.preventDefault()
     setFormErr('')
     const priceNum = parseFloat(String(form.price))
-    if (!form.name) { setFormErr('Promo name is required.'); return }
+    if (!form.name) { setFormErr('Bundle name is required.'); return }
     if (isNaN(priceNum) || priceNum < 0) { setFormErr('Please enter a valid price.'); return }
-    if (!form.promoDate) { setFormErr('Promo date is required.'); return }
-    if (form.rideIds.length < 2) { setFormErr('Select at least two rides for this promo.'); return }
+    if (!form.promoDate) { setFormErr('Bundle date is required.'); return }
+    if (form.rideIds.length < 2) { setFormErr('Select at least two attractions for this bundle.'); return }
     if (form.rideIds.some(id => !form.scheduleByRide[id])) {
-      setFormErr('Pick a schedule for every selected ride.'); return
+      setFormErr('Pick a schedule for every selected attraction.'); return
     }
-    if (!editPromo && !imageFile) { setFormErr('Image is required for new promos.'); return }
+    if (!editPromo && !imageFile) { setFormErr('Image is required for new bundles.'); return }
 
     setSaving(true)
     try {
@@ -847,14 +847,14 @@ export default function AdminPromosPage() {
 
       if (editPromo) {
         await promoApi.update(editPromo.id, fd)
-        toast.success('Promo updated successfully.')
+        toast.success('Bundle updated successfully.')
       } else {
         await promoApi.create(fd)
-        toast.success('Promo created successfully.')
+        toast.success('Bundle created successfully.')
       }
       setModalOpen(false); fetchPromos()
     } catch (e: any) {
-      setFormErr(e.response?.data?.message ?? 'Failed to save promo.')
+      setFormErr(e.response?.data?.message ?? 'Failed to save bundle.')
     } finally {
       setSaving(false)
     }
@@ -888,12 +888,12 @@ export default function AdminPromosPage() {
     <div className="p-4 sm:p-6 space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Manage ride promos</h1>
-          <p className="text-sm text-gray-500 mt-1">Bundle 2+ rides into a single-priced promo package.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Manage attraction bundles</h1>
+          <p className="text-sm text-gray-500 mt-1">Bundle 2+ attractions into a single-priced package.</p>
         </div>
         <button onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
-          <Plus className="w-4 h-4" /> Add promo
+          <Plus className="w-4 h-4" /> Add bundle
         </button>
       </div>
 
@@ -903,7 +903,7 @@ export default function AdminPromosPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
             <input value={params.search ?? ''}
               onChange={e => setParams(p => ({ ...p, search: e.target.value, page: 1 }))}
-              placeholder="Search promos..."
+              placeholder="Search bundles..."
               className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 w-full sm:w-52" />
           </div>
           <StatusCombobox
@@ -925,8 +925,8 @@ export default function AdminPromosPage() {
         ) : promos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400">
             <Tag className="w-16 h-16 mb-3 text-gray-200" />
-            <div className="font-semibold text-gray-500 text-base">No ride promos found</div>
-            <div className="text-sm mt-1 text-gray-400">Try adjusting your search or add a new promo.</div>
+            <div className="font-semibold text-gray-500 text-base">No attraction bundles found</div>
+            <div className="text-sm mt-1 text-gray-400">Try adjusting your search or add a new bundle.</div>
           </div>
         ) : (
           <>
@@ -1018,28 +1018,28 @@ export default function AdminPromosPage() {
 
                     <div className="flex items-center justify-end gap-2">
                       {promo.isDeleted ? (
-                        <button onClick={() => setRestoreTarget(promo)} title="Restore promo"
+                        <button onClick={() => setRestoreTarget(promo)} title="Restore bundle"
                           className="flex items-center justify-center w-8 h-8 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all">
                           <RotateCcw className="w-4 h-4" />
                         </button>
                       ) : locked ? (
                         <>
-                          <button disabled title="This promo's call time has started — it's locked and can no longer be edited."
+                          <button disabled title="This bundle's call time has started — it's locked and can no longer be edited."
                             className="flex items-center justify-center w-8 h-8 bg-gray-50 text-gray-300 border border-gray-200 rounded-xl cursor-not-allowed">
                             <Pencil className="w-4 h-4" />
                           </button>
-                          <button disabled title="This promo's call time has started — it's locked and can no longer be deleted."
+                          <button disabled title="This bundle's call time has started — it's locked and can no longer be deleted."
                             className="flex items-center justify-center w-8 h-8 bg-gray-50 text-gray-300 border border-gray-200 rounded-xl cursor-not-allowed">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </>
                       ) : (
                         <>
-                          <button onClick={() => openEdit(promo)} title="Edit promo"
+                          <button onClick={() => openEdit(promo)} title="Edit bundle"
                             className="flex items-center justify-center w-8 h-8 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-xl transition-all">
                             <Pencil className="w-4 h-4" />
                           </button>
-                          <button onClick={() => setDeleteTarget(promo)} title="Delete promo"
+                          <button onClick={() => setDeleteTarget(promo)} title="Delete bundle"
                             className="flex items-center justify-center w-8 h-8 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-xl transition-all">
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1091,8 +1091,8 @@ export default function AdminPromosPage() {
                   {editPromo ? <Pencil className="w-5 h-5 text-blue-600" /> : <Plus className="w-5 h-5 text-emerald-600" />}
                 </div>
                 <div>
-                  <div className="font-bold text-gray-900 text-[15px]">{editPromo ? 'Edit promo' : 'Add new promo'}</div>
-                  <div className="text-[11px] text-gray-400">{editPromo ? `Editing: ${editPromo.name}` : 'Bundle 2+ rides into one package'}</div>
+                  <div className="font-bold text-gray-900 text-[15px]">{editPromo ? 'Edit bundle' : 'Add new bundle'}</div>
+                  <div className="text-[11px] text-gray-400">{editPromo ? `Editing: ${editPromo.name}` : 'Bundle 2+ attractions into one package'}</div>
                 </div>
               </div>
               <button onClick={() => setModalOpen(false)}
@@ -1104,7 +1104,7 @@ export default function AdminPromosPage() {
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Promo photo {!editPromo && <span className="text-red-500">*</span>}
+                  Bundle photo {!editPromo && <span className="text-red-500">*</span>}
                 </label>
                 <div className="flex items-center gap-4 flex-wrap">
                   {imagePreview ? (
@@ -1133,7 +1133,7 @@ export default function AdminPromosPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Promo name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Bundle name *</label>
                 <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                   required placeholder="Weekend Thrill Combo"
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300" />
@@ -1142,7 +1142,7 @@ export default function AdminPromosPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
                 <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-                  placeholder="Describe the promo..." rows={2}
+                  placeholder="Describe the bundle..." rows={2}
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-300" />
               </div>
 
@@ -1156,30 +1156,30 @@ export default function AdminPromosPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
-                    <CalendarCheck className="w-3.5 h-3.5 text-emerald-500" /> Promo date *
+                    <CalendarCheck className="w-3.5 h-3.5 text-emerald-500" /> Bundle date *
                   </label>
                   <PromoDatePicker value={form.promoDate} onChange={setPromoDate} />
                 </div>
               </div>
               <p className="text-[11px] text-gray-400 -mt-3">
-                Promos run for a single day. Every ride bundled below must have a schedule locked on this exact date.
+                Bundles run for a single day. Every attraction bundled below must have a schedule locked on this exact date.
               </p>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Rides included * <span className="text-gray-400 font-normal">(select at least two, and lock a schedule for each)</span>
+                  Attractions included * <span className="text-gray-400 font-normal">(select at least two, and lock a schedule for each)</span>
                 </label>
                 {!form.promoDate ? (
                   <div className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
-                    <Calendar className="w-4 h-4 flex-shrink-0" /> Pick a promo date first to see which rides have schedules that day.
+                    <Calendar className="w-4 h-4 flex-shrink-0" /> Pick a bundle date first to see which attractions have schedules that day.
                   </div>
                 ) : (
                   <>
                     <div className="border border-gray-200 rounded-lg max-h-80 overflow-y-auto divide-y divide-gray-100">
                       {ridesForPromoDate.length === 0 ? (
                         <div className="text-xs text-amber-600 bg-amber-50 p-3">
-                          No rides have an open <strong>Promo-type</strong> schedule on {fmtDate(form.promoDate)} yet — create one in
-                          Schedules first and set its Type to "Promo".
+                          No attractions have an open <strong>Attraction Bundle-type</strong> schedule on {fmtDate(form.promoDate)} yet — create one in
+                          Schedules first and set its Type to "Attraction Bundle".
                         </div>
                       ) : ridesForPromoDate.map(ride => {
                         const checked = form.rideIds.includes(ride.id)
@@ -1203,7 +1203,7 @@ export default function AdminPromosPage() {
                               <div className="px-3 pb-3 pl-11">
                                 {options.length === 0 ? (
                                   <div className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                                    No open schedules with slots for this ride on {fmtDate(form.promoDate)} — create one in Schedules first.
+                                    No open schedules with slots for this attraction on {fmtDate(form.promoDate)} — create one in Schedules first.
                                   </div>
                                 ) : (
                                   <div className="space-y-1.5">
@@ -1257,7 +1257,7 @@ export default function AdminPromosPage() {
                       })}
                     </div>
                     <p className="text-[11px] text-gray-400 mt-1.5">
-                      {form.rideIds.length} of {ridesForPromoDate.length} available ride(s) selected for {fmtDate(form.promoDate)}.
+                      {form.rideIds.length} of {ridesForPromoDate.length} available attraction(s) selected for {fmtDate(form.promoDate)}.
                     </p>
                   </>
                 )}
@@ -1275,7 +1275,7 @@ export default function AdminPromosPage() {
                 <button type="submit" disabled={saving || !hasFormChanges}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                  {editPromo ? 'Save changes' : 'Create promo'}
+                  {editPromo ? 'Save changes' : 'Create bundle'}
                 </button>
               </div>
             </form>
@@ -1285,7 +1285,7 @@ export default function AdminPromosPage() {
 
       {deleteTarget && (
         <ConfirmModal
-          title="Delete promo?"
+          title="Delete bundle?"
           message={`Delete "${deleteTarget.name}"? It can be restored later.`}
           confirmLabel="Yes, delete"
           danger
@@ -1297,7 +1297,7 @@ export default function AdminPromosPage() {
 
       {restoreTarget && (
         <ConfirmModal
-          title="Restore promo?"
+          title="Restore bundle?"
           message={`Restore "${restoreTarget.name}"? It will be visible to visitors again.`}
           confirmLabel="Yes, restore"
           onConfirm={doRestore}

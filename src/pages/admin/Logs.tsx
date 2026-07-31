@@ -24,6 +24,11 @@ function maskBookingCodesInText(text: string): string {
 
 const MODULE_OPTS = ['Ride', 'Schedule', 'Booking', 'User', 'Settings']
 
+// ✅ UI-only display label — the underlying module value stays 'Ride'
+// (matches the backend-logged ActivityLog.Module value), only the text
+// shown to the admin is renamed to "Attraction".
+const moduleLabel = (m: string) => m === 'Ride' ? 'Attraction' : m
+
 const moduleColor = (m: string) => {
   if (m === 'Ride')     return { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500', line: 'bg-purple-200', solid: 'bg-purple-500' }
   if (m === 'Schedule') return { bg: 'bg-amber-100',  text: 'text-amber-700',  border: 'border-amber-200',  dot: 'bg-amber-500',  line: 'bg-amber-200', solid: 'bg-amber-500' }
@@ -94,7 +99,7 @@ function fmtRange(from: string, to: string, sep = ' – ') {
 // ── Module Filter — native combobox ────────────────────────────────
 function ModuleCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false)
-  const label = value || 'All modules'
+  const label = value ? moduleLabel(value) : 'All modules'
 
   return (
     <div className="relative">
@@ -124,7 +129,7 @@ function ModuleCombobox({ value, onChange }: { value: string; onChange: (v: stri
                   value === m ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'
                 }`}>
                 <ModuleIcon m={m} />
-                {m}
+                {moduleLabel(m)}
               </button>
             ))}
           </div>
@@ -480,7 +485,7 @@ function LogModal({ log, onClose }: { log: ActivityLog; onClose: () => void }) {
         <div className="p-5 space-y-3">
           <div className={`flex items-center gap-2 p-3 rounded-xl border ${c.bg} ${c.border}`}>
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${c.bg} ${c.text} ${c.border}`}>
-              <ModuleIcon m={log.module} /> {log.module}
+              <ModuleIcon m={log.module} /> {moduleLabel(log.module)}
             </span>
             <span className={`text-[12px] font-bold ${c.text}`}>{log.action}</span>
             {role && (
@@ -492,7 +497,7 @@ function LogModal({ log, onClose }: { log: ActivityLog; onClose: () => void }) {
           {[
             { icon: <User className="w-3.5 h-3.5 text-indigo-600" />, bg: 'bg-indigo-50', label: 'Performed by', value: log.userName ?? 'System' },
             { icon: <Clock className="w-3.5 h-3.5 text-rose-600" />, bg: 'bg-rose-50', label: 'Timestamp', value: new Date(log.createdAt).toLocaleString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) },
-            { icon: <Tag className="w-3.5 h-3.5 text-cyan-600" />, bg: 'bg-cyan-50', label: 'Module', value: log.module },
+            { icon: <Tag className="w-3.5 h-3.5 text-cyan-600" />, bg: 'bg-cyan-50', label: 'Module', value: moduleLabel(log.module) },
           ].map(row => (
             <div key={row.label} className="flex items-start gap-3">
               <div className={`w-7 h-7 rounded-lg ${row.bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>{row.icon}</div>
@@ -693,7 +698,7 @@ export default function AdminLogsPage() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap mb-0.5">
                                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${c.bg} ${c.text} ${c.border}`}>
-                                    <ModuleIcon m={log.module} /> {log.module}
+                                    <ModuleIcon m={log.module} /> {moduleLabel(log.module)}
                                   </span>
                                   {role && (
                                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${rc.bg} ${rc.text} ${rc.border}`}>

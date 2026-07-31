@@ -67,7 +67,7 @@ function ImageZoom({ src, onClose }: { src: string; onClose: () => void }) {
         <button onClick={onClose} className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg z-10">
           <X className="w-4 h-4 text-gray-700" />
         </button>
-        <img src={src} alt="Ride" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
+        <img src={src} alt="Attraction" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
       </div>
     </div>
   )
@@ -84,7 +84,7 @@ function RideThumb({ path, name, size = 'w-11 h-11', iconSize = 'w-5 h-5', bg = 
       onClick={e => { if (!url) return; e.stopPropagation(); onZoom(url) }}>
       {url ? (
         <>
-          <img src={url} alt={name ?? 'Ride'}
+          <img src={url} alt={name ?? 'Attraction'}
             className="w-full h-full object-cover"
             onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
           <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover/thumb:opacity-100">
@@ -118,7 +118,7 @@ function ScheduleTypeBadge({ type, className = '' }: { type?: string; className?
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
       isPromo ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-gray-100 text-gray-600 border-gray-200'
     } ${className}`}>
-      {isPromo ? 'Promo' : 'Regular'}
+      {isPromo ? 'Attraction Bundle' : 'Regular'}
     </span>
   )
 }
@@ -551,7 +551,7 @@ function RosterModal({ schedule, bookings, loading, onClose, onZoom }: {
                             </span>
                             {b.promoId && (
                               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-pink-100 text-pink-700 text-[9px] font-semibold">
-                                <Tag className="w-2.5 h-2.5" /> {b.promoName ?? 'Promo'}
+                                <Tag className="w-2.5 h-2.5" /> {b.promoName ?? 'Bundle'}
                               </span>
                             )}
                           </div>
@@ -665,7 +665,6 @@ export function AttendantDashboard() {
   const [code, setCode]             = useState('')
   const [verifiedBooking, setVerifiedBooking] = useState<Booking | null>(null)
   const [verifying, setVerifying]   = useState(false)
-  const [completing, setCompleting] = useState(false)
   const [collectingPayment, setCollectingPayment] = useState(false)
 
   // roster (attendee list) for a schedule
@@ -743,19 +742,26 @@ export function AttendantDashboard() {
     } finally { setCollectingPayment(false) }
   }
 
-  const handleComplete = async () => {
-    if (!verifiedBooking) return
-    setCompleting(true)
-    try {
-      await api.put(`/api/booking/${verifiedBooking.bookingCode}/complete`)
-      toast.success('Ride completed — payment already confirmed!')
-      setVerifiedBooking(null)
-      setCode('')
-      fetchSchedules()
-    } catch (e: any) {
-      toast.error(getErrorMessage(e, 'Failed to complete ride.'))
-    } finally { setCompleting(false) }
-  }
+  // ✅ CHANGED — completion is no longer a manual attendant action. The
+  // background AutoBookingStatusWorker (runs every minute) already flips
+  // Approved+Paid bookings to Completed on its own once the schedule/bundle
+  // window closes — for both single-attraction and attraction-bundle
+  // bookings. This silently re-checks the verified booking every few
+  // seconds so the panel below updates itself to "already completed" once
+  // that happens, instead of requiring the attendant to scan again.
+  useEffect(() => {
+    if (!verifiedBooking || verifiedBooking.status !== 'Approved' || verifiedBooking.paymentStatus !== 'Paid') return
+    const bookingCode = verifiedBooking.bookingCode
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get<{ data: Booking }>(`/api/booking/code/${bookingCode}`)
+        setVerifiedBooking(res.data.data)
+      } catch {
+        // silent — next poll tries again
+      }
+    }, 5_000)
+    return () => clearInterval(interval)
+  }, [verifiedBooking?.bookingCode, verifiedBooking?.status, verifiedBooking?.paymentStatus])
 
   // ── Attendee roster via /api/booking/schedule/{scheduleId} ─────────────
   const fetchRoster = async (s: Schedule) => {
@@ -819,18 +825,20 @@ export function AttendantDashboard() {
   const isAfterWindow  = !!scheduleEnd && nowTime > scheduleEnd
   const isScheduleDue  = !isBeforeWindow && !isAfterWindow
 
-  // ✅ NEW — a promo booking is ONE shared row across every included ride,
-  // so "isScheduleDue" (due any time up to the LAST ride's end) isn't the
-  // right gate for actually marking it Completed — that would let an
-  // attendant complete the whole booking right after the visitor's FIRST
-  // included ride, hours before the last one even happens. Mirrors the
-  // backend's ValidatePromoAllRidesFinishedAsync: for a promo, "Complete"
-  // only unlocks once "now" has passed the LATEST included ride's end time
-  // (same moment the background auto-complete worker would flip it anyway).
-  // Regular (non-promo) bookings keep the existing isScheduleDue behavior.
-  const canCompleteRide = verifiedBooking?.promoId
-    ? !!scheduleEnd && nowTime >= scheduleEnd
-    : isScheduleDue
+  // ✅ CHANGED — "Complete" used to unlock the moment isScheduleDue was
+  // true, i.e. any time from check-in (call time) through the schedule's
+  // end. For a ride whose call time opens well ahead of its actual start
+  // (e.g. call time 10:51 AM for a 1:50–2:00 PM ride), that let an attendant
+  // mark it Completed — and unlock the visitor's review prompt — hours
+  // before the ride had even run. Completion now always requires "now" to
+  // have passed the ride's own end time, for BOTH single-ride and promo
+  // bookings (a promo's scheduleEnd above is already the LATEST included
+  // ride's end, so the same rule naturally covers "every included ride is
+  // over" too). Mirrors the backend's ValidateRideHasEnded /
+  // ValidatePromoAllRidesFinishedAsync. "Collect payment" is unaffected —
+  // it still opens at check-in (isScheduleDue) since paying ahead of the
+  // ride is normal.
+  const canCompleteRide = !!scheduleEnd && nowTime >= scheduleEnd
 
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening'
@@ -862,6 +870,21 @@ export function AttendantDashboard() {
   const displaySchedules = statusFilter === 'All'
     ? dateRangeFilteredSchedules
     : dateRangeFilteredSchedules.filter(s => s.status === statusFilter)
+
+  // ✅ NEW — assigned-schedules pagination. Previously the whole filtered
+  // list rendered in one long scroll (could easily be 50+ rows for a busy
+  // attendant). Paginated client-side since the full month/status/date-range
+  // filtered set is already in memory from the one-shot fetch.
+  const SCHED_PAGE_SIZE = 10
+  const [schedPage, setSchedPage] = useState(1)
+  const schedTotalPages = Math.max(1, Math.ceil(displaySchedules.length / SCHED_PAGE_SIZE))
+  const pagedSchedules = displaySchedules.slice(
+    (schedPage - 1) * SCHED_PAGE_SIZE,
+    schedPage * SCHED_PAGE_SIZE
+  )
+  // Any filter change can shrink the list below the current page — snap
+  // back to page 1 instead of showing an empty page.
+  useEffect(() => { setSchedPage(1) }, [filterMonth, filterYear, statusFilter, dateFrom, dateTo])
 
   // Stat cards at the top always reflect the selected month, regardless of
   // the date-range filter below (which only narrows the schedules list).
@@ -986,7 +1009,7 @@ export function AttendantDashboard() {
                   </div>
                   {verifiedBooking.promoId && (
                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-pink-100 text-pink-700 text-[11px] font-semibold">
-                      <Tag className="w-3 h-3" /> Promo: {verifiedBooking.promoName}
+                      <Tag className="w-3 h-3" /> Bundle: {verifiedBooking.promoName}
                     </span>
                   )}
                 </div>
@@ -1014,14 +1037,14 @@ export function AttendantDashboard() {
                       </div>
                     ))}
                     <div className="bg-white/70 rounded-xl p-2.5 text-xs flex items-center justify-between">
-                      <span className="text-gray-500">Promo price</span>
+                      <span className="text-gray-500">Bundle price</span>
                       <span className="font-bold text-gray-900">₱{verifiedBooking.paymentAmount?.toFixed(2)}</span>
                     </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 text-xs mb-3">
                     <div className="bg-white/70 rounded-xl p-2.5">
-                      <p className="text-gray-500 mb-0.5">Ride</p>
+                      <p className="text-gray-500 mb-0.5">Attraction</p>
                       <p className="font-medium text-gray-900">{verifiedBooking.rideName}</p>
                       {verifiedBooking.rideDescription && (
                         <p className="text-gray-500 mt-1 line-clamp-2">{verifiedBooking.rideDescription}</p>
@@ -1039,7 +1062,7 @@ export function AttendantDashboard() {
                       )}
                     </div>
                     <div className="bg-white/70 rounded-xl p-2.5">
-                      <p className="text-gray-500 mb-0.5">Ride price</p>
+                      <p className="text-gray-500 mb-0.5">Attraction price</p>
                       <p className="font-bold text-gray-900">₱{verifiedBooking.ridePrice?.toFixed(2)}</p>
                     </div>
                     <div className="bg-white/70 rounded-xl p-2.5">
@@ -1088,14 +1111,14 @@ export function AttendantDashboard() {
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
                     {new Date().toDateString() === checkInOpensAt.toDateString()
                       ? `Check-in opens at ${checkInOpensAt.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} today (the call time).`
-                      : `This ride is scheduled for ${scheduleStart.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })} — check-in isn't open yet.`}
+                      : `This attraction is scheduled for ${scheduleStart.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })} — check-in isn't open yet.`}
                   </div>
                 )}
 
                 {(isApprovedAndUnpaid || isApprovedAndPaid) && isAfterWindow && scheduleEnd && (
                   <div className="flex items-center gap-2 bg-white/70 border border-red-200 rounded-xl p-2.5 text-xs text-red-800 mb-2.5">
                     <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    {`Check-in closed at ${scheduleEnd.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} — this ride's window has ended.`}
+                    {`Check-in closed at ${scheduleEnd.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })} — this attraction's window has ended.`}
                   </div>
                 )}
 
@@ -1103,7 +1126,7 @@ export function AttendantDashboard() {
                   <div className="space-y-2.5">
                     <div className="flex items-center gap-2 bg-white/70 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-800">
                       <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      Payment not yet collected. Collect ₱{(verifiedBooking.ridePrice ?? verifiedBooking.paymentAmount)?.toFixed(2)} before completing the ride.
+                      Payment not yet collected. Collect ₱{(verifiedBooking.ridePrice ?? verifiedBooking.paymentAmount)?.toFixed(2)} before completing the attraction.
                     </div>
                     <button onClick={handleCollectPayment} disabled={collectingPayment || !isScheduleDue}
                       title={!isScheduleDue ? 'Outside the check-in window for this schedule.' : undefined}
@@ -1118,26 +1141,25 @@ export function AttendantDashboard() {
                 )}
 
                 {isApprovedAndPaid && (
-                  <button onClick={handleComplete} disabled={completing || !canCompleteRide}
-                    title={
-                      !canCompleteRide
-                        ? (verifiedBooking?.promoId
-                            ? `This promo can't be completed yet — it unlocks once every included ride is over${scheduleEnd ? ` (last ride ends ${scheduleEnd.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })})` : ''}.`
-                            : 'Outside the check-in window for this schedule.')
-                        : undefined
-                    }
-                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600
-                      hover:from-green-600 hover:to-emerald-700 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-60 shadow-sm">
-                    {completing
-                      ? <Loader2 className="w-4 h-4 animate-spin" />
-                      : <CheckCircle2 className="w-4 h-4" />}
-                    Mark ride as completed
-                  </button>
+                  <div className={`flex items-center gap-2 py-2.5 px-3 rounded-xl text-sm font-medium ${
+                    canCompleteRide ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-green-100 text-green-700'
+                  }`}>
+                    {canCompleteRide
+                      ? <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+                      : <Clock className="w-4 h-4 flex-shrink-0" />}
+                    <span>
+                      {canCompleteRide
+                        ? 'Window closed — completing automatically, this updates within a minute.'
+                        : (verifiedBooking?.promoId
+                            ? `Checked in — completes automatically once every included attraction is over${scheduleEnd ? ` (last attraction ends ${scheduleEnd.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })})` : ''}.`
+                            : `Checked in — completes automatically once the window closes${scheduleEnd ? ` at ${scheduleEnd.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })}` : ''}.`)}
+                    </span>
+                  </div>
                 )}
 
                 {verifiedBooking.status === 'Completed' && (
                   <div className="flex items-center justify-center gap-2 py-2.5 bg-blue-100 text-blue-700 rounded-xl text-sm font-semibold">
-                    <CheckCircle2 className="w-4 h-4" /> Ride already completed
+                    <CheckCircle2 className="w-4 h-4" /> Attraction already completed
                   </div>
                 )}
 
@@ -1161,7 +1183,7 @@ export function AttendantDashboard() {
             <div className="border border-gray-100 rounded-2xl p-4 space-y-2.5 bg-gray-50/50">
               <p className="text-xs font-semibold text-gray-500 mb-1">Status guide</p>
               {[
-                { status: 'Approved + Paid',    desc: 'Ready to ride — mark as completed', color: 'bg-green-100 text-green-700' },
+                { status: 'Approved + Paid',    desc: 'Ready to go — mark as completed', color: 'bg-green-100 text-green-700' },
                 { status: 'Approved + Unpaid',  desc: 'Collect payment, then complete', color: 'bg-amber-100 text-amber-700' },
                 { status: 'Pending',            desc: 'Not yet approved — contact admin', color: 'bg-amber-100 text-amber-700' },
                 { status: 'Rejected/Cancelled', desc: 'Booking inactive — deny entry', color: 'bg-gray-100 text-gray-600' },
@@ -1235,7 +1257,7 @@ export function AttendantDashboard() {
           ) : (
             <>
               <div className="divide-y divide-gray-50">
-                {displaySchedules.map(s => (
+                {pagedSchedules.map(s => (
                   <div key={s.id}
                     onClick={() => fetchRoster(s)}
                     className="px-5 py-3.5 flex items-center gap-3 hover:bg-gray-50/60 transition-colors group cursor-pointer">
@@ -1270,10 +1292,32 @@ export function AttendantDashboard() {
                   </div>
                 ))}
               </div>
-              <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50">
+              <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50 flex-wrap gap-2">
                 <span className="text-xs text-gray-500">
-                  Showing <strong>{displaySchedules.length}</strong> of <strong>{monthFilteredSchedules.length}</strong> in {monthLabel}
+                  Showing <strong>{pagedSchedules.length}</strong> of <strong>{displaySchedules.length}</strong> in {monthLabel}
                 </span>
+                {schedTotalPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setSchedPage(p => Math.max(1, p - 1))}
+                      disabled={schedPage <= 1}
+                      className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    {Array.from({ length: schedTotalPages }, (_, i) => i + 1)
+                      .filter(p => Math.abs(p - schedPage) <= 2)
+                      .map(p => (
+                        <button key={p} onClick={() => setSchedPage(p)}
+                          className={`flex items-center justify-center w-8 h-8 rounded-lg border text-xs font-medium transition-colors ${
+                            p === schedPage ? 'bg-amber-500 text-white border-amber-500' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-100'
+                          }`}>{p}</button>
+                      ))}
+                    <button onClick={() => setSchedPage(p => Math.min(schedTotalPages, p + 1))}
+                      disabled={schedPage >= schedTotalPages}
+                      className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           )}

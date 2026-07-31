@@ -279,7 +279,7 @@ export default function AdminDashboardPage() {
 
       {/* Row 1 — Hero stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total rides"     value={stats?.totalRides ?? 0}     icon={<FerrisWheel className="w-5 h-5 text-white" />}    color="green"  />
+        <StatCard label="Total attractions"     value={stats?.totalRides ?? 0}     icon={<FerrisWheel className="w-5 h-5 text-white" />}    color="green"  />
         <StatCard label="Total visitors"  value={stats?.totalVisitors ?? 0}  icon={<Users className="w-5 h-5 text-white" />}    color="blue"   />
         <StatCard label="Today schedules" value={stats?.todaySchedules ?? 0} icon={<Calendar className="w-5 h-5 text-white" />} color="purple" />
         <div className="relative rounded-2xl p-5 text-white shadow-sm bg-gradient-to-br from-amber-400 to-amber-500 overflow-visible">
@@ -361,7 +361,7 @@ export default function AdminDashboardPage() {
                         <BadgePercent className="w-3.5 h-3.5 text-pink-500 flex-shrink-0" />
                         <span className="truncate">{b.promoName}</span>
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-semibold border border-pink-100 flex-shrink-0">
-                          Promo
+                          Bundle
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-400">

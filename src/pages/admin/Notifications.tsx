@@ -493,7 +493,7 @@ export default function AdminNotificationsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
           <input value={search}
             onChange={e => { setSearch(e.target.value); setParams(p => ({ ...p, search: e.target.value, page: 1 })) }}
-            placeholder="Search by visitor, ride, or title..."
+            placeholder="Search by visitor, attraction, or title..."
             className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 w-full sm:w-56 bg-gray-50" />
         </div>
 

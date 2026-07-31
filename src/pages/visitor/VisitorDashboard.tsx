@@ -105,13 +105,13 @@ function ViewToggle({ value, onChange }: { value: 'rides' | 'promos'; onChange: 
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
           value === 'rides' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
         }`}>
-        <FerrisWheel className="w-3.5 h-3.5" /> Rides
+        <FerrisWheel className="w-3.5 h-3.5" /> Attractions
       </button>
       <button type="button" onClick={() => onChange('promos')}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
           value === 'promos' ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
         }`}>
-        <Tag className="w-3.5 h-3.5" /> Promos
+        <Tag className="w-3.5 h-3.5" /> Bundles
       </button>
     </div>
   )
@@ -465,7 +465,7 @@ function GuestBookingModal({
           {new Date(date).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} at {fmtTime(time)}
           {hasRestriction && (
             <span className="block mt-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-              This ride requires you to be{' '}
+              This attraction requires you to be{' '}
               {[hasHeightRestriction ? `${heightRangeLabel.replace('cm', ' cm tall').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null,
                 hasAgeRestriction ? `${ageRangeLabel.replace('y', ' years old').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null,
                 hasWeightRestriction ? `${weightRangeLabel.replace('kg', 'kg').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null]
@@ -630,12 +630,12 @@ function PromoGuestBookingModal({
         <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-pink-100 text-pink-600">
           <PackageCheck className="w-6 h-6" />
         </div>
-        <div className="text-[15px] font-bold text-gray-900 mb-1">Book promo "{promoName}"?</div>
+        <div className="text-[15px] font-bold text-gray-900 mb-1">Book bundle "{promoName}"?</div>
         <div className="text-[12px] text-gray-500 mb-4">
-          Covering {rideCount} rides as one booking.
+          Covering {rideCount} attractions as one booking.
           {hasRestriction && (
             <span className="block mt-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-              Every ride in this promo requires you to be{' '}
+              Every attraction in this bundle requires you to be{' '}
               {[hasHeightRestriction ? `${heightRangeLabel.replace('cm', ' cm tall').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null,
                 hasAgeRestriction ? `${ageRangeLabel.replace('y', ' years old').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null,
                 hasWeightRestriction ? `${weightRangeLabel.replace('kg', 'kg').replace('-', ' to ').replace('min ', 'at least ').replace('max ', 'at most ')}` : null]
@@ -723,7 +723,7 @@ function ImageZoom({ src, onClose }: { src: string; onClose: () => void }) {
         <button onClick={onClose} className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg z-10">
           <X className="w-4 h-4 text-gray-700" />
         </button>
-        <img src={src} alt="Ride" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
+        <img src={src} alt="Attraction" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
       </div>
     </div>
   )
@@ -1150,7 +1150,7 @@ export function VisitorDashboard() {
       fetchPromos()
     } catch (e: any) {
       setPromoBookTarget(null)
-      toast.error(getErrorMessage(e, 'Promo booking failed.'))
+      toast.error(getErrorMessage(e, 'Bundle booking failed.'))
     } finally { setPromoBookingLoading(false) }
   }
 
@@ -1162,7 +1162,7 @@ export function VisitorDashboard() {
       setRides(Array.isArray(d) ? d.filter((r: any) => !r.isDeleted) : [])
       const pg = res.data?.data?.pagination ?? res.data?.pagination
       if (pg) setRidePag(pg)
-    } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to load rides.')) }
+    } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to load attractions.')) }
     finally { setLoading(false) }
   }
 
@@ -1281,15 +1281,19 @@ export function VisitorDashboard() {
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening'
 
-  // ✅ NEW — safety net so a promo booking can't be reviewed until every
-  // included ride's own end time has actually passed, even if its Status
-  // already shows Completed (e.g. an older booking completed by an
-  // attendant checking in just the FIRST included ride, before that was
-  // fixed to require every ride to finish). Regular (non-promo) bookings
-  // don't need this — their Completed status already only happens once
-  // that one ride's own end time has passed.
-  const allPromoRidesEnded = (b: Booking) =>
-    !b.promoId || (b.includedRides ?? []).every(r => new Date(`${r.scheduleDate.slice(0, 10)}T${r.endTime}`) <= now)
+  // ✅ CHANGED — safety net so a booking can't be reviewed until the ride it
+  // covers has actually ended, even if its Status already shows Completed.
+  // This used to only cover promo bookings (every included ride must be
+  // over), but a single-ride booking had the same underlying gap: an
+  // attendant could mark it Completed the moment check-in opened — which
+  // for a ride whose call time is set well ahead of its start (e.g. call
+  // time 10:51 AM for a 1:50–2:00 PM ride) could be HOURS before the ride
+  // actually ran. Now checks the ride's own end time for a regular booking
+  // too, same as the promo case below.
+  const rideActuallyEnded = (b: Booking) =>
+    b.promoId
+      ? (b.includedRides ?? []).every(r => new Date(`${r.scheduleDate.slice(0, 10)}T${r.endTime}`) <= now)
+      : !b.scheduleDate || !b.endTime || new Date(`${b.scheduleDate.slice(0, 10)}T${b.endTime}`) <= now
 
   // ── Month filter for booking stats ──────────────────────────────
   const [filterMonth, setFilterMonth] = useState(now.getMonth())
@@ -1324,7 +1328,7 @@ export function VisitorDashboard() {
               <MapPin className="w-3 h-3" /> Gloria's Fantasyland
             </div>
             <h1 className="text-2xl font-bold mb-1">{greeting}, {user?.firstName}! 🎢</h1>
-            <p className="text-white/80 text-sm">Ready for an adventure? Browse rides and pick a schedule.</p>
+            <p className="text-white/80 text-sm">Ready for an adventure? Browse attractions and pick a schedule.</p>
           </div>
         </div>
       </div>
@@ -1362,9 +1366,9 @@ export function VisitorDashboard() {
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-wrap gap-3">
               <div>
                 <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <FerrisWheel className="w-5 h-5 text-emerald-500" /> Available rides
+                <FerrisWheel className="w-5 h-5 text-emerald-500" /> Available attractions
                 </h3>
-              <p className="text-xs text-gray-500">Click a ride to see available schedules and book.</p>
+              <p className="text-xs text-gray-500">Click an attraction to see available schedules and book.</p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <ViewToggle value={viewMode} onChange={setViewMode} />
@@ -1372,7 +1376,7 @@ export function VisitorDashboard() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
                   <input value={search}
                     onChange={e => { setSearch(e.target.value); setRideParams(p => ({ ...p, search: e.target.value, page: 1 })) }}
-                    placeholder="Search rides..."
+                    placeholder="Search attractions..."
                     className="pl-9 pr-4 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 w-full sm:w-48 bg-gray-50" />
                 </div>
               </div>
@@ -1385,7 +1389,7 @@ export function VisitorDashboard() {
             ) : rides.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                 <FerrisWheel className="w-14 h-14 mb-3 text-gray-200" />
-                <div className="font-semibold text-gray-500">No rides available</div>
+                <div className="font-semibold text-gray-500">No attractions available</div>
               </div>
             ) : (
               <>
@@ -1443,7 +1447,7 @@ export function VisitorDashboard() {
                   ))}
                 </div>
                 <div className="flex items-center justify-between px-5 pt-4 pb-3 mt-1 border-t border-gray-100 bg-gray-50 flex-wrap gap-2">
-                  <span className="text-xs text-gray-500">Showing <strong>{rides.length}</strong> of <strong>{ridePag.totalCount}</strong> rides</span>
+                  <span className="text-xs text-gray-500">Showing <strong>{rides.length}</strong> of <strong>{ridePag.totalCount}</strong> attractions</span>
                   {ridePag.totalPages > 1 && (
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500 whitespace-nowrap">
@@ -1473,7 +1477,7 @@ export function VisitorDashboard() {
             <div className="px-5 py-4 border-b border-gray-100">
               <button onClick={() => setSelectedRide(null)}
                 className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 mb-3 transition-colors">
-                <ArrowLeft className="w-3.5 h-3.5" /> Back to rides
+                <ArrowLeft className="w-3.5 h-3.5" /> Back to attractions
               </button>
               <div className="flex items-start gap-4">
                 {selectedRide.imagePath && (
@@ -1578,9 +1582,9 @@ export function VisitorDashboard() {
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-wrap gap-3">
                 <div>
                   <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <Tag className="w-5 h-5 text-pink-500" /> Ride promos
+                    <Tag className="w-5 h-5 text-pink-500" /> Attraction bundles
                   </h3>
-                  <p className="text-xs text-gray-500">Bundle deals — click a promo to pick schedules and book.</p>
+                  <p className="text-xs text-gray-500">Bundle deals — click a bundle to pick schedules and book.</p>
                 </div>
                 <ViewToggle value={viewMode} onChange={setViewMode} />
               </div>
@@ -1592,7 +1596,7 @@ export function VisitorDashboard() {
               ) : promos.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                   <Tag className="w-14 h-14 mb-3 text-gray-200" />
-                  <div className="font-semibold text-gray-500">No promos available</div>
+                  <div className="font-semibold text-gray-500">No bundles available</div>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-5">
@@ -1727,7 +1731,7 @@ export function VisitorDashboard() {
                   disabled={!promoHasSlots(selectedPromo)}
                   className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white rounded-xl text-sm font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
                   <PackageCheck className="w-4 h-4" />
-                  {promoHasSlots(selectedPromo) ? `Book this promo — ₱${fmt(selectedPromo.price)}` : 'No slots left for this promo'}
+                  {promoHasSlots(selectedPromo) ? `Book this bundle — ₱${fmt(selectedPromo.price)}` : 'No slots left for this bundle'}
                 </button>
               </div>
             </>
@@ -1742,14 +1746,14 @@ export function VisitorDashboard() {
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
             <Ticket className="w-5 h-5 text-emerald-500" /> My bookings
             </h3>
-            <p className="text-xs text-gray-500">Your ride reservation history.</p>
+            <p className="text-xs text-gray-500">Your attraction reservation history.</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative w-full sm:w-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
               <input value={bookSearch}
                 onChange={e => { setBookSearch(e.target.value); setBookParams(p => ({ ...p, page: 1 })) }}
-                placeholder="Search code or ride..."
+                placeholder="Search code or attraction..."
                 className="pl-9 pr-4 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 w-full sm:w-48 bg-gray-50" />
             </div>
             <DateRangeButton
@@ -1768,7 +1772,7 @@ export function VisitorDashboard() {
             <Ticket className="w-14 h-14 mb-3 text-gray-200" />
             <div className="font-semibold text-gray-500">No bookings found</div>
             <div className="text-xs mt-1">
-              {bookSearch || bookDateFrom || bookDateTo ? 'Try adjusting your filters.' : 'Pick a ride above to get started.'}
+              {bookSearch || bookDateFrom || bookDateTo ? 'Try adjusting your filters.' : 'Pick an attraction above to get started.'}
             </div>
           </div>
         ) : (
@@ -1795,7 +1799,7 @@ export function VisitorDashboard() {
                         <div className="flex items-center gap-2 mb-0.5">
                           <span className="font-semibold text-gray-900 text-sm">{b.promoName}</span>
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-semibold border border-pink-100">
-                            <PackageCheck className="w-3 h-3" /> Promo
+                            <PackageCheck className="w-3 h-3" /> Bundle
                           </span>
                         </div>
                         <div className="font-mono text-xs text-gray-700 bg-gray-200 px-2 py-1 rounded font-semibold inline-block mb-1">
@@ -1903,13 +1907,13 @@ export function VisitorDashboard() {
                           <StarRatingDisplay rating={b.review.rating} />
                         </div>
                         <span className="text-[11px] text-gray-400">
-                          {b.promoId ? 'You rated this promo' : 'You rated this ride'}
+                          {b.promoId ? 'You rated this bundle' : 'You rated this attraction'}
                         </span>
                         {b.review.comment && (
                           <span className="text-[11px] text-gray-400 truncate italic">— "{b.review.comment}"</span>
                         )}
                       </div>
-                    ) : allPromoRidesEnded(b) ? (
+                    ) : rideActuallyEnded(b) ? (
                       <div className="mt-3 pt-3 border-t border-gray-100">
                         <button onClick={() => setReviewTarget(b)}
                           className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 active:scale-[0.98] border border-amber-200 rounded-xl text-amber-700 text-xs font-semibold transition-all shadow-sm">
@@ -1921,7 +1925,9 @@ export function VisitorDashboard() {
                     ) : (
                       <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1.5 text-[11px] text-gray-400">
                         <Clock className="w-3.5 h-3.5" />
-                        You can review this promo once every included ride is over.
+                        {b.promoId
+                          ? 'You can review this bundle once every included attraction is over.'
+                          : `You can review this attraction once it ends${b.endTime ? ` at ${fmtTime(b.endTime)}` : ''}.`}
                       </div>
                     )
                   )}
@@ -2011,7 +2017,7 @@ export function VisitorDashboard() {
       {/* Leave a review — OPTIONAL, never blocks anything */}
       {reviewTarget && (
         <ReviewModal
-          rideName={reviewTarget.promoId ? (reviewTarget.promoName ?? 'this promo') : (reviewTarget.rideName ?? 'this ride')}
+          rideName={reviewTarget.promoId ? (reviewTarget.promoName ?? 'this bundle') : (reviewTarget.rideName ?? 'this attraction')}
           onSubmit={doSubmitReview}
           onCancel={() => setReviewTarget(null)}
           loading={reviewLoading}

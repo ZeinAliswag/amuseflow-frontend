@@ -40,7 +40,7 @@ function ScheduleTypeBadge({ type, className = '' }: { type?: string; className?
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
       isPromo ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-gray-100 text-gray-600 border-gray-200'
     } ${className}`}>
-      {isPromo ? 'Promo' : 'Regular'}
+      {isPromo ? 'Attraction Bundle' : 'Regular'}
     </span>
   )
 }
@@ -262,7 +262,7 @@ function DayModal({ date, schedules, onClose, onEdit, onDelete}: {
               <input
                 value={search}
                 onChange={e => handleSearchChange(e.target.value)}
-                placeholder="Search rides..."
+                placeholder="Search attractions..."
                 className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300"
               />
               {search && (
@@ -280,7 +280,7 @@ function DayModal({ date, schedules, onClose, onEdit, onDelete}: {
             <div className="flex flex-col items-center py-8 text-gray-400">
               <Calendar className="w-10 h-10 mb-2 text-gray-200" />
               <div className="text-sm">
-                {schedules.length === 0 ? 'No schedules for this day' : `No rides matching "${search}"`}
+                {schedules.length === 0 ? 'No schedules for this day' : `No attractions matching "${search}"`}
               </div>
             </div>
           ) : pageSchedules.map(s => {
@@ -878,7 +878,7 @@ export default function AdminSchedulesPage() {
 
   const handleSubmitClick = (e: FormEvent) => {
     e.preventDefault()
-    if (!form.rideId)       { toast.error('Please select a ride.'); return }
+    if (!form.rideId)       { toast.error('Please select an attraction.'); return }
 
     // ── Date-range mode (create-only): validate the range + times/slots
     // shared by every day, plus the attendant assignment(s), then hand off
@@ -1258,11 +1258,11 @@ export default function AdminSchedulesPage() {
 
             <form onSubmit={handleSubmitClick} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Ride <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Attraction <span className="text-red-500">*</span></label>
                 <SearchableSelect
                   value={String(form.rideId || '')}
                   onChange={v => setForm({...form, rideId: Number(v) || 0})}
-                  placeholder="Select a ride..."
+                  placeholder="Select an attraction..."
                   options={rides.map(r => ({ value: String(r.id), label: r.name }))}
                 />
               </div>
@@ -1277,22 +1277,22 @@ export default function AdminSchedulesPage() {
                     const locked = editSched != null && bookedSlots > 0 && (editSched.scheduleType ?? 'Regular') !== t
                     return (
                       <button key={t} type="button" disabled={locked}
-                        title={locked ? `Can't change type — ${bookedSlots} slot(s) already booked as '${editSched?.scheduleType ?? 'Regular'}'.` : undefined}
+                        title={locked ? `Can't change type — ${bookedSlots} slot(s) already booked as '${(editSched?.scheduleType ?? 'Regular') === 'Promo' ? 'Attraction Bundle' : (editSched?.scheduleType ?? 'Regular')}'.` : undefined}
                         onClick={() => setForm({ ...form, scheduleType: t })}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                           form.scheduleType === t
                             ? t === 'Promo' ? 'bg-rose-500 border-rose-500 text-white' : 'bg-teal-600 border-teal-600 text-white'
                             : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
                         }`}>
-                        {t}
+                        {t === 'Promo' ? 'Attraction Bundle' : t}
                       </button>
                     )
                   })}
                 </div>
                 <div className="text-[11px] text-gray-400 mt-1">
                   {form.scheduleType === 'Promo'
-                    ? "Reserved for bundling into a Ride Promo — won't show up for direct visitor booking."
-                    : "Directly bookable by visitors on this ride's page."}
+                    ? "Reserved for bundling into an Attraction Bundle — won't show up for direct visitor booking."
+                    : "Directly bookable by visitors on this attraction's page."}
                 </div>
               </div>
               {/* ✅ NEW — Single date (as before) vs a whole date range,
@@ -1459,7 +1459,7 @@ export default function AdminSchedulesPage() {
                             {selectedRideDuration.name} runs {selectedRideDuration.durationMinutes}m — that would push the end time past midnight. Pick an earlier start time.
                           </span>
                         : `Auto-calculated: ${selectedRideDuration.name} runs ${selectedRideDuration.durationMinutes}m from the start time above.`
-                      : 'Select a ride above to auto-calculate this from its duration.'}
+                      : 'Select an attraction above to auto-calculate this from its duration.'}
                   </div>
                 </div>
               </div>
@@ -1474,7 +1474,7 @@ export default function AdminSchedulesPage() {
                   return (
                     <div className="text-[11px] text-gray-400 mt-1 space-y-0.5">
                       {selectedRide && (
-                        <div>Ride capacity: <strong>{selectedRide.maxCapacity}</strong></div>
+                        <div>Attraction capacity: <strong>{selectedRide.maxCapacity}</strong></div>
                       )}
                       {editSched && bookedSlots > 0 && (
                         <div>{bookedSlots} slot(s) already booked — max slots can't go below this.</div>
@@ -1514,8 +1514,8 @@ export default function AdminSchedulesPage() {
           title={editSched ? 'Save changes?' : form.dateMode === 'range' ? `Create ${rangeDates.length} schedules?` : 'Create schedule?'}
           message={
             !editSched && form.dateMode === 'range'
-              ? `Create ${rangeDates.length} schedule(s) for ${rides.find(r => r.id === Number(form.rideId))?.name ?? 'this ride'}, one per day from ${form.rangeStart} to ${form.rangeEnd}?`
-              : `${editSched ? 'Update' : 'Create'} schedule for ${rides.find(r => r.id === Number(form.rideId))?.name ?? 'this ride'} on ${form.scheduleDate}?`
+              ? `Create ${rangeDates.length} schedule(s) for ${rides.find(r => r.id === Number(form.rideId))?.name ?? 'this attraction'}, one per day from ${form.rangeStart} to ${form.rangeEnd}?`
+              : `${editSched ? 'Update' : 'Create'} schedule for ${rides.find(r => r.id === Number(form.rideId))?.name ?? 'this attraction'} on ${form.scheduleDate}?`
           }
           confirmLabel={editSched ? 'Yes, save' : 'Yes, create'}
           onConfirm={doSave}

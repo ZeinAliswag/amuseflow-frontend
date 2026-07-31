@@ -18,8 +18,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/admin',           icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
-  { to: '/admin/rides',     icon: <FerrisWheel className="w-5 h-5" />,           label: 'Rides' },
-  { to: '/admin/promos',    icon: <BadgePercent className="w-5 h-5" />,    label: 'Ride Promos' },
+  { to: '/admin/rides',     icon: <FerrisWheel className="w-5 h-5" />,           label: 'Attractions' },
+  { to: '/admin/promos',    icon: <BadgePercent className="w-5 h-5" />,    label: 'Attraction Bundles' },
   { to: '/admin/schedules', icon: <Calendar className="w-5 h-5" />,        label: 'Schedules' },
   { to: '/admin/bookings',  icon: <Ticket className="w-5 h-5" />,          label: 'Bookings' },
   { to: '/admin/notifications', icon: <Bell className="w-5 h-5" />,       label: 'Notifications' },

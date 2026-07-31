@@ -201,7 +201,7 @@ export default function AdminSettingsPage() {
       setSavedForm(next)
       setUpdatedAt(data.updatedAt ?? null)
     } catch (e: any) {
-      toast.error(extractApiError(e, 'Failed to load ride validation settings.'))
+      toast.error(extractApiError(e, 'Failed to load attraction validation settings.'))
     } finally {
       setLoading(false)
     }
@@ -250,9 +250,9 @@ export default function AdminSettingsPage() {
       setForm(next)
       setSavedForm(next)
       setUpdatedAt(data.updatedAt ?? null)
-      toast.success('Ride validation settings updated successfully.')
+      toast.success('Attraction validation settings updated successfully.')
     } catch (e: any) {
-      toast.error(extractApiError(e, 'Failed to update ride validation settings.'))
+      toast.error(extractApiError(e, 'Failed to update attraction validation settings.'))
     } finally {
       setSaving(false)
     }
@@ -276,8 +276,8 @@ export default function AdminSettingsPage() {
         </div>
       ) : (
         <AccordionSection
-          title="Ride Validations"
-          subtitle="Lowest and highest allowed values for each ride restriction field"
+          title="Attraction Validations"
+          subtitle="Lowest and highest allowed values for each attraction restriction field"
           icon={<FerrisWheel className="w-5 h-5" />}
           open={open}
           onToggle={() => setOpen(p => !p)}

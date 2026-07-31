@@ -193,7 +193,7 @@ function ImageZoom({ src, onClose }: { src: string; onClose: () => void }) {
           className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors z-10">
           <X className="w-4 h-4 text-gray-700" />
         </button>
-        <img src={src} alt="Ride" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" />
+        <img src={src} alt="Attraction" className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" />
       </div>
     </div>
   )
@@ -330,9 +330,9 @@ export default function AdminRidesPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     const priceNum = parseFloat(String(form.price))
-    if (!form.name)           { toast.error('Ride name is required.'); return }
+    if (!form.name)           { toast.error('Attraction name is required.'); return }
     if (isNaN(priceNum) || priceNum < 0) { toast.error('Please enter a valid price.'); return }
-    if (!editRide && !imageFile) { toast.error('Image is required for new rides.'); return }
+    if (!editRide && !imageFile) { toast.error('Image is required for new attractions.'); return }
     // ✅ CHANGED — used to mirror the backend's static [Range]
     // DataAnnotations on CreateRideRequest with hardcoded numbers. Those
     // attributes are gone; the bounds now come from the admin-configurable
@@ -397,10 +397,10 @@ export default function AdminRidesPage() {
 
       if (editRide) {
         await apiForm.put(`/api/ride/${editRide.id}`, fd)
-        toast.success('Ride updated successfully.')
+        toast.success('Attraction updated successfully.')
       } else {
         await apiForm.post('/api/ride', fd)
-        toast.success('Ride created successfully.')
+        toast.success('Attraction created successfully.')
       }
       setModalOpen(false); fetchRides()
     } catch (e: any) {
@@ -410,7 +410,7 @@ export default function AdminRidesPage() {
       // which has no top-level `.message`. extractApiError() pulls the
       // real per-field text out of `.errors` so the admin sees exactly
       // which value is invalid instead of a generic "Failed to save ride."
-      const msg = extractApiError(e, 'Failed to save ride.')
+      const msg = extractApiError(e, 'Failed to save attraction.')
       toast.error(msg)
     } finally {
       setSaving(false)
@@ -446,12 +446,12 @@ export default function AdminRidesPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Manage rides</h1>
-          <p className="text-sm text-gray-500 mt-1">Create, update, delete and restore rides.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Manage attractions</h1>
+          <p className="text-sm text-gray-500 mt-1">Create, update, delete and restore attractions.</p>
         </div>
         <button onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
-          <Plus className="w-4 h-4" /> Add ride
+          <Plus className="w-4 h-4" /> Add attraction
         </button>
       </div>
 
@@ -463,7 +463,7 @@ export default function AdminRidesPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
             <input value={params.search ?? ''}
               onChange={e => setParams(p => ({ ...p, search: e.target.value, page: 1 }))}
-              placeholder="Search rides..."
+              placeholder="Search attractions..."
               className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300 w-full sm:w-52" />
           </div>
 
@@ -488,8 +488,8 @@ export default function AdminRidesPage() {
         ) : rides.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400">
             <FerrisWheel className="w-16 h-16 mb-3 text-gray-200" />
-            <div className="font-semibold text-gray-500 text-base">No rides found</div>
-            <div className="text-sm mt-1 text-gray-400">Try adjusting your search or add a new ride.</div>
+            <div className="font-semibold text-gray-500 text-base">No attractions found</div>
+            <div className="text-sm mt-1 text-gray-400">Try adjusting your search or add a new attraction.</div>
           </div>
         ) : (
           <>
@@ -551,7 +551,7 @@ export default function AdminRidesPage() {
                       || ride.minAgeYears != null || ride.maxAgeYears != null
                       || ride.minWeightKg != null || ride.maxWeightKg != null) && (
                       <div className="flex items-center gap-1.5 flex-wrap mb-3"
-                        title="Every guest in the party must meet all of these to book this ride">
+                        title="Every guest in the party must meet all of these to book this attraction">
                         {(ride.minHeightCm != null || ride.maxHeightCm != null) && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-1 cursor-default">
                             <Ruler className="w-3 h-3" />
@@ -595,13 +595,13 @@ export default function AdminRidesPage() {
                     {/* Actions */}
                     <div className="flex items-center justify-end gap-2">
                       {ride.isDeleted ? (
-                        <button onClick={() => setRestoreTarget(ride)} title="Restore ride"
+                        <button onClick={() => setRestoreTarget(ride)} title="Restore attraction"
                           className="flex items-center justify-center w-8 h-8 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all">
                           <RotateCcw className="w-4 h-4" />
                         </button>
                       ) : (
                         <>
-                          <button onClick={() => openEdit(ride)} title="Edit ride"
+                          <button onClick={() => openEdit(ride)} title="Edit attraction"
                             className="flex items-center justify-center w-8 h-8 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-xl transition-all">
                             <Pencil className="w-4 h-4" />
                           </button>
@@ -609,12 +609,12 @@ export default function AdminRidesPage() {
                               upcoming, or ongoing schedule, mirroring the
                               same rule enforced server-side. */}
                           {ride.hasActiveSchedule ? (
-                            <button disabled title="This ride has an open, upcoming, or ongoing schedule — it can't be deleted until that schedule is cancelled or completes."
+                            <button disabled title="This attraction has an open, upcoming, or ongoing schedule — it can't be deleted until that schedule is cancelled or completes."
                               className="flex items-center justify-center w-8 h-8 bg-gray-50 text-gray-300 border border-gray-200 rounded-xl cursor-not-allowed">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           ) : (
-                            <button onClick={() => setDeleteTarget(ride)} title="Delete ride"
+                            <button onClick={() => setDeleteTarget(ride)} title="Delete attraction"
                               className="flex items-center justify-center w-8 h-8 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-xl transition-all">
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -675,7 +675,7 @@ export default function AdminRidesPage() {
                   {editRide ? <Pencil className="w-5 h-5 text-blue-600" /> : <Plus className="w-5 h-5 text-emerald-600" />}
                 </div>
                 <div>
-                  <div className="font-bold text-gray-900 text-[15px]">{editRide ? 'Edit ride' : 'Add new ride'}</div>
+                  <div className="font-bold text-gray-900 text-[15px]">{editRide ? 'Edit attraction' : 'Add new attraction'}</div>
                   <div className="text-[11px] text-gray-400">{editRide ? `Editing: ${editRide.name}` : 'Fill in the details below'}</div>
                 </div>
               </div>
@@ -689,7 +689,7 @@ export default function AdminRidesPage() {
               {/* Image — clickable to zoom */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Ride image {!editRide && <span className="text-red-500">*</span>}
+                  Attraction image {!editRide && <span className="text-red-500">*</span>}
                 </label>
                 <div className="flex items-center gap-4 flex-wrap">
                   {imagePreview ? (
@@ -718,7 +718,7 @@ export default function AdminRidesPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Ride name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Attraction name *</label>
                 <input value={form.name} onChange={e => setForm({...form, name: e.target.value})}
                   required placeholder="Dragon Coaster"
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
@@ -727,7 +727,7 @@ export default function AdminRidesPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
                 <textarea value={form.description as string} onChange={e => setForm({...form, description: e.target.value})}
-                  placeholder="Describe the ride..." rows={3}
+                  placeholder="Describe the attraction..." rows={3}
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-300" />
               </div>
 
@@ -826,7 +826,7 @@ export default function AdminRidesPage() {
                     ? <Loader2 className="w-4 h-4 animate-spin" />
                     : <CheckCircle2 className="w-4 h-4" />
                   }
-                  {editRide ? 'Save changes' : 'Create ride'}
+                  {editRide ? 'Save changes' : 'Create attraction'}
                 </button>
               </div>
             </form>
@@ -837,7 +837,7 @@ export default function AdminRidesPage() {
       {/* Confirm Delete Modal */}
       {deleteTarget && (
         <ConfirmModal
-          title="Delete ride?"
+          title="Delete attraction?"
           message={`Delete "${deleteTarget.name}"? It can be restored later.`}
           confirmLabel="Yes, delete"
           danger
@@ -850,7 +850,7 @@ export default function AdminRidesPage() {
       {/* Confirm Restore Modal */}
       {restoreTarget && (
         <ConfirmModal
-          title="Restore ride?"
+          title="Restore attraction?"
           message={`Restore "${restoreTarget.name}"? It will be set back to active and visible to visitors.`}
           confirmLabel="Yes, restore"
           onConfirm={doRestore}

@@ -560,7 +560,7 @@ export default function AdminBookingsPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Manage bookings</h1>
-          <p className="text-sm text-gray-500 mt-1">Approve, reject and view all ride reservations.</p>
+          <p className="text-sm text-gray-500 mt-1">Approve, reject and view all attraction reservations.</p>
         </div>
       </div>
 
@@ -571,7 +571,7 @@ export default function AdminBookingsPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
             <input value={search}
               onChange={e => { setSearch(e.target.value); setParams(p => ({ ...p, search: e.target.value, page: 1 })) }}
-              placeholder="Search by code, visitor, ride..."
+              placeholder="Search by code, visitor, attraction..."
               className="pl-9 pr-4 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 w-full sm:w-56 bg-gray-50" />
           </div>
 
@@ -659,7 +659,7 @@ export default function AdminBookingsPage() {
                         <BadgePercent className="w-3.5 h-3.5 text-pink-500 flex-shrink-0" />
                         <span className="font-medium text-gray-900 text-sm truncate">{b.promoName}</span>
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-semibold border border-pink-100 flex-shrink-0">
-                          Promo · {b.includedRides?.length ?? 0} rides
+                          Bundle · {b.includedRides?.length ?? 0} attractions
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">

@@ -682,7 +682,7 @@ export default function AdminUsersPage() {
                         : 'bg-emerald-100 text-emerald-700'
                       }`}>{r}</span>
                       <span className="text-xs text-gray-500">
-                        {r === 'Admin' ? 'Full management access' : r === 'Ride Attendant' ? 'Verify and complete rides' : 'Browse and book rides'}
+                        {r === 'Admin' ? 'Full management access' : r === 'Ride Attendant' ? 'Verify and complete attractions' : 'Browse and book attractions'}
                       </span>
                     </div>
                   </label>
