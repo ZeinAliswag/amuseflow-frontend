@@ -57,6 +57,13 @@ function isPromoLocked(promo: RidePromo): boolean {
   return lockAt ? new Date() >= lockAt : promo.promoDate.slice(0, 10) <= toISO(new Date())
 }
 
+// ✅ NEW — a deleted bundle whose date has already passed can't be brought
+// back into anything bookable (visitors can't reserve a day that's already
+// gone), so the restore button is disabled once promoDate is in the past.
+function isPromoDatePast(promo: RidePromo): boolean {
+  return promo.promoDate.slice(0, 10) < toISO(new Date())
+}
+
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 
 // ── Purple, past-dates-disabled single date picker for the promo date field.
@@ -938,6 +945,7 @@ export default function AdminPromosPage() {
                 // ride, so editing or deleting the promo out from under them
                 // is blocked from that moment on.
                 const locked = isPromoLocked(promo)
+                const pastDate = promo.isDeleted && isPromoDatePast(promo)
                 return (
                 <div key={promo.id}
                   className={`bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all group ${
@@ -1018,10 +1026,17 @@ export default function AdminPromosPage() {
 
                     <div className="flex items-center justify-end gap-2">
                       {promo.isDeleted ? (
-                        <button onClick={() => setRestoreTarget(promo)} title="Restore bundle"
-                          className="flex items-center justify-center w-8 h-8 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all">
-                          <RotateCcw className="w-4 h-4" />
-                        </button>
+                        pastDate ? (
+                          <button disabled title="This bundle's date has already passed — it can't be restored."
+                            className="flex items-center justify-center w-8 h-8 bg-gray-50 text-gray-300 border border-gray-200 rounded-xl cursor-not-allowed">
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <button onClick={() => setRestoreTarget(promo)} title="Restore bundle"
+                            className="flex items-center justify-center w-8 h-8 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all">
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                        )
                       ) : locked ? (
                         <>
                           <button disabled title="This bundle's call time has started — it's locked and can no longer be edited."
