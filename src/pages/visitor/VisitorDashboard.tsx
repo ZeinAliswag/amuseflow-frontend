@@ -1392,11 +1392,10 @@ export function VisitorDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-5">
                   {rides.map(ride => (
                     <div key={ride.id}
-                      className="border border-gray-200 rounded-2xl overflow-hidden hover:border-emerald-300 hover:shadow-md transition-all group cursor-pointer"
-                      onClick={() => fetchSchedules(ride)}>
+                      className="border border-gray-200 rounded-2xl overflow-hidden hover:border-emerald-300 hover:shadow-md transition-all group">
                       {/* Image */}
                       <div className="relative h-48 bg-white overflow-hidden"
-                        onClick={e => { e.stopPropagation(); const u = getImageUrl(ride.imagePath); if (u) setZoomSrc(u) }}>
+                        onClick={() => { const u = getImageUrl(ride.imagePath); if (u) setZoomSrc(u) }}>
                         {ride.imagePath ? (
                           <>
                             <img src={getImageUrl(ride.imagePath)!} alt={ride.name}
@@ -1435,7 +1434,7 @@ export function VisitorDashboard() {
                           <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{ride.durationMinutes}m</span>
                         </div>
                         <button
-                          onClick={e => { e.stopPropagation(); fetchSchedules(ride) }}
+                          onClick={() => fetchSchedules(ride)}
                           className="w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm">
                           <Calendar className="w-3.5 h-3.5" /> View schedules
                         </button>
@@ -1601,10 +1600,9 @@ export function VisitorDashboard() {
                     const available = promoIsAvailable(promo)
                     return (
                       <div key={promo.id}
-                        className={`border border-gray-200 rounded-2xl overflow-hidden hover:border-pink-300 hover:shadow-md transition-all group cursor-pointer ${!available ? 'opacity-60' : ''}`}
-                        onClick={() => available && openPromo(promo)}>
+                        className={`border border-gray-200 rounded-2xl overflow-hidden hover:border-pink-300 hover:shadow-md transition-all group ${!available ? 'opacity-60' : ''}`}>
                         <div className="relative h-40 bg-white overflow-hidden"
-                          onClick={e => { e.stopPropagation(); const u = getImageUrl(promo.imagePath); if (u) setZoomSrc(u) }}>
+                          onClick={() => { const u = getImageUrl(promo.imagePath); if (u) setZoomSrc(u) }}>
                           {promo.imagePath ? (
                             <img src={getImageUrl(promo.imagePath)!} alt={promo.name}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -1649,7 +1647,7 @@ export function VisitorDashboard() {
                             ))}
                           </div>
                           <button disabled={!available}
-                            onClick={e => { e.stopPropagation(); if (available) openPromo(promo) }}
+                            onClick={() => available && openPromo(promo)}
                             className="w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
                             <PackageCheck className="w-3.5 h-3.5" /> {available ? 'View details' : 'Unavailable'}
                           </button>

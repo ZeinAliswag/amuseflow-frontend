@@ -686,19 +686,30 @@ export function AttendantDashboard() {
   // here was removed — real-time notifications now live in the header bell.)
   useEffect(() => {
     fetchSchedules()
-    const interval = setInterval(fetchSchedules, 5_000)
+    // ✅ FIXED — this background poll used to call fetchSchedules() the same
+    // way the initial load does, which set loading(true) every 5s and
+    // swapped the whole assigned-schedules list out for a full spinner —
+    // visible as a random "it flickers back to loading" whenever the poll
+    // happened to land while someone was looking (same bug fixed on the
+    // Visitor Dashboard's My Bookings list). Silent polls now skip the
+    // spinner and just swap in fresh data once it arrives.
+    const interval = setInterval(() => fetchSchedules({ silent: true }), 5_000)
     return () => clearInterval(interval)
   }, [params])
 
-  const fetchSchedules = async () => {
-    setLoading(true)
+  const fetchSchedules = async (opts: { silent?: boolean } = {}) => {
+    if (!opts.silent) setLoading(true)
     try {
       const res = await api.get<PagedResponse<Schedule>>('/api/schedule/my-assigned', { params })
       const data = res.data.data ?? []
       setSchedules(data)
       setPagination(res.data.pagination)
-    } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to load schedules.')) }
-    finally { setLoading(false) }
+    } catch (e: any) {
+      // Silent background polls stay quiet on a transient failure instead of
+      // popping an error toast every 5s — the next poll just tries again.
+      if (!opts.silent) toast.error(getErrorMessage(e, 'Failed to load schedules.'))
+    }
+    finally { if (!opts.silent) setLoading(false) }
   }
 
   // ── Verify booking code — correct endpoint is /api/booking/code/{code} ──
