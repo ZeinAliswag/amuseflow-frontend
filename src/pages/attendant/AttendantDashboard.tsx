@@ -808,6 +808,19 @@ export function AttendantDashboard() {
   const isAfterWindow  = !!scheduleEnd && nowTime > scheduleEnd
   const isScheduleDue  = !isBeforeWindow && !isAfterWindow
 
+  // ✅ NEW — a promo booking is ONE shared row across every included ride,
+  // so "isScheduleDue" (due any time up to the LAST ride's end) isn't the
+  // right gate for actually marking it Completed — that would let an
+  // attendant complete the whole booking right after the visitor's FIRST
+  // included ride, hours before the last one even happens. Mirrors the
+  // backend's ValidatePromoAllRidesFinishedAsync: for a promo, "Complete"
+  // only unlocks once "now" has passed the LATEST included ride's end time
+  // (same moment the background auto-complete worker would flip it anyway).
+  // Regular (non-promo) bookings keep the existing isScheduleDue behavior.
+  const canCompleteRide = verifiedBooking?.promoId
+    ? !!scheduleEnd && nowTime >= scheduleEnd
+    : isScheduleDue
+
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening'
 
@@ -1094,8 +1107,14 @@ export function AttendantDashboard() {
                 )}
 
                 {isApprovedAndPaid && (
-                  <button onClick={handleComplete} disabled={completing || !isScheduleDue}
-                    title={!isScheduleDue ? 'Outside the check-in window for this schedule.' : undefined}
+                  <button onClick={handleComplete} disabled={completing || !canCompleteRide}
+                    title={
+                      !canCompleteRide
+                        ? (verifiedBooking?.promoId
+                            ? `This promo can't be completed yet — it unlocks once every included ride is over${scheduleEnd ? ` (last ride ends ${scheduleEnd.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })})` : ''}.`
+                            : 'Outside the check-in window for this schedule.')
+                        : undefined
+                    }
                     className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600
                       hover:from-green-600 hover:to-emerald-700 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-60 shadow-sm">
                     {completing

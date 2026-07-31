@@ -1088,7 +1088,13 @@ export function VisitorDashboard() {
   // header bell.)
   useEffect(() => {
     fetchBookings()
-    const interval = setInterval(fetchBookings, 5_000)
+    // ✅ FIXED — this background poll used to call fetchBookings() the same
+    // way the initial load does, which set bookLoading(true) every 5s and
+    // swapped the whole My Bookings list out for a full spinner — visible as
+    // a random "it flickers back to loading" every time the poll happened to
+    // land while someone was looking. Silent polls now skip the spinner and
+    // just swap in fresh data once it arrives.
+    const interval = setInterval(() => fetchBookings({ silent: true }), 5_000)
     return () => clearInterval(interval)
   }, [bookParams, bookSearch, bookDateFrom, bookDateTo])
   useEffect(() => { fetchPromos() }, [])
@@ -1185,8 +1191,8 @@ export function VisitorDashboard() {
     finally { setSchedLoading(false) }
   }
 
-  const fetchBookings = async () => {
-    setBookLoading(true)
+  const fetchBookings = async (opts: { silent?: boolean } = {}) => {
+    if (!opts.silent) setBookLoading(true)
     try {
       const [pageRes, allRes] = await Promise.all([
         api.get('/api/booking/my-bookings', {
@@ -1217,8 +1223,14 @@ export function VisitorDashboard() {
       // store raw list; monthly stats are recomputed reactively below
       const all: any[] = allRes.data?.data?.data ?? allRes.data?.data ?? allRes.data ?? []
       setAllBookingsRaw(all)
-    } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to load bookings.')) }
-    finally { setBookLoading(false) }
+    } catch (e: any) {
+      // Silent background polls stay quiet on a transient failure (e.g. a
+      // dropped connection mid-poll) instead of popping an error toast every
+      // 5s — the next poll just tries again. Real loads (first mount, filter
+      // changes) still surface the error like before.
+      if (!opts.silent) toast.error(getErrorMessage(e, 'Failed to load bookings.'))
+    }
+    finally { if (!opts.silent) setBookLoading(false) }
   }
 
   // ✅ CHANGED — group bookings: now takes the guest list collected in
@@ -1268,6 +1280,16 @@ export function VisitorDashboard() {
 
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening'
+
+  // ✅ NEW — safety net so a promo booking can't be reviewed until every
+  // included ride's own end time has actually passed, even if its Status
+  // already shows Completed (e.g. an older booking completed by an
+  // attendant checking in just the FIRST included ride, before that was
+  // fixed to require every ride to finish). Regular (non-promo) bookings
+  // don't need this — their Completed status already only happens once
+  // that one ride's own end time has passed.
+  const allPromoRidesEnded = (b: Booking) =>
+    !b.promoId || (b.includedRides ?? []).every(r => new Date(`${r.scheduleDate.slice(0, 10)}T${r.endTime}`) <= now)
 
   // ── Month filter for booking stats ──────────────────────────────
   const [filterMonth, setFilterMonth] = useState(now.getMonth())
@@ -1889,7 +1911,7 @@ export function VisitorDashboard() {
                           <span className="text-[11px] text-gray-400 truncate italic">— "{b.review.comment}"</span>
                         )}
                       </div>
-                    ) : (
+                    ) : allPromoRidesEnded(b) ? (
                       <div className="mt-3 pt-3 border-t border-gray-100">
                         <button onClick={() => setReviewTarget(b)}
                           className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 active:scale-[0.98] border border-amber-200 rounded-xl text-amber-700 text-xs font-semibold transition-all shadow-sm">
@@ -1897,6 +1919,11 @@ export function VisitorDashboard() {
                           Leave a review
                           <span className="text-amber-500 font-normal">(optional)</span>
                         </button>
+                      </div>
+                    ) : (
+                      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1.5 text-[11px] text-gray-400">
+                        <Clock className="w-3.5 h-3.5" />
+                        You can review this promo once every included ride is over.
                       </div>
                     )
                   )}
