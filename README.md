@@ -1,32 +1,55 @@
-# React + TypeScript + Vite
+# AmuseFlow — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
 
-Currently, two official plugins are available:
+React + TypeScript + Vite frontend for **AmuseFlow** — a theme park attraction reservation system. Three portals in one app, talking to [AmuseFlowWebAPI](../AmuseFlowWebAPI) over REST with JWT auth.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Portals
 
-## React Compiler
+- **Visitor** — browse attractions and attraction bundles, book schedules, track bookings, leave reviews, receive real-time notifications
+- **Admin** — manage attractions, bundles, schedules, bookings, users, validation settings, and view system-wide activity logs and notifications
+- **Ride Attendant** — view assigned schedules, verify visitors, collect payment, and check guests in (bookings auto-complete once a schedule's window closes)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Tech stack
 
-## Expanding the Oxlint configuration
+- **React 19** with hooks, no class components
+- **TypeScript** throughout — `types.ts` mirrors the backend's DTO shapes
+- **Vite** for dev server and build
+- **Tailwind CSS** for styling, no component library
+- **react-hot-toast** for notifications, **lucide-react** for icons
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Getting started
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Point the API base URL (see `src/services/api.ts`) at a running instance of [AmuseFlowWebAPI](../AmuseFlowWebAPI).
+
+```bash
+npm run build   # production build
+npx tsc -b      # typecheck only
+```
+
+## Project structure
+
+```
+src/
+  pages/
+    admin/       # Admin portal pages
+    visitor/     # Visitor portal (VisitorDashboard)
+    attendant/   # Ride Attendant portal (AttendantDashboard)
+  components/
+    layout/      # AdminLayout, PortalLayouts (shared header/nav/notification bell)
+  services/
+    api.ts       # API client, one function group per backend controller
+  types.ts       # TypeScript types mirroring backend DTOs
+```
+
+## Documentation
+
+- [`docs/adr/ADR-001-domain-naming.md`](./docs/adr/ADR-001-domain-naming.md) — why the code/API contract use `Ride`/`RidePromo` naming while every screen displays "Attraction"/"Attraction Bundle"
