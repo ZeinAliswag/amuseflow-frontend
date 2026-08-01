@@ -881,8 +881,13 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
 // paid/cancelled booking) instead of every row looking identical.
 function getNotificationVisual(n: Notification) {
   const t = n.title.toLowerCase()
-  if (t.includes('reject') || t.includes('cancel'))
+  if (t.includes('reject'))
     return { Icon: XCircle, iconBg: 'bg-red-100', iconColor: 'text-red-600', accent: 'bg-red-500' }
+  // ✅ CHANGED — cancellations (schedule or booking) are now blue instead of
+  // red. Rejections stay red — a rejection is more clearly a negative outcome,
+  // while a cancellation is often just routine/informational.
+  if (t.includes('cancel'))
+    return { Icon: XCircle, iconBg: 'bg-blue-100', iconColor: 'text-blue-600', accent: 'bg-blue-500' }
   if (t.includes('paid') || t.includes('payment'))
     return { Icon: Wallet, iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', accent: 'bg-emerald-500' }
   if (t.includes('approved'))
@@ -1040,8 +1045,16 @@ function NotificationBell() {
                   {visibleNotifications.map(n => {
                     const { Icon, iconBg, iconColor, accent } = getNotificationVisual(n)
                     return (
-                      <button key={n.id} onClick={() => handleMarkRead(n)}
-                        className={`relative w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-gray-50 transition-colors ${!n.isRead ? 'bg-blue-50/50' : ''}`}>
+                      // ✅ CHANGED — was a native <button>, which blocks the
+                      // normal click-and-drag text selection browsers do
+                      // everywhere else, so the title/message could never be
+                      // selected or copied with the mouse. A plain div with
+                      // role="button" keeps it clickable (mouse + keyboard)
+                      // and accessible, while leaving its text selectable.
+                      <div key={n.id} role="button" tabIndex={0}
+                        onClick={() => handleMarkRead(n)}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleMarkRead(n) } }}
+                        className={`relative w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-gray-50 transition-colors cursor-pointer select-text ${!n.isRead ? 'bg-blue-50/50' : ''}`}>
                         {!n.isRead && <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${accent}`} />}
                         <div className={`w-9 h-9 rounded-full ${iconBg} flex items-center justify-center flex-shrink-0`}>
                           <Icon className={`w-4 h-4 ${iconColor}`} />
@@ -1054,7 +1067,7 @@ function NotificationBell() {
                           <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{n.message}</p>
                           <p className="text-[10px] text-gray-400 mt-1.5 font-medium">{timeAgo(n.createdAt)}</p>
                         </div>
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
@@ -1124,7 +1137,7 @@ function PortalHeader({
               {portalIcon}
             </div>
             <div className="min-w-0">
-              <p className="text-sm sm:text-base font-bold text-white leading-tight truncate">Gloria's Fantasyland</p>
+              <p className="text-sm sm:text-base font-bold text-white leading-tight truncate">Glorious Fantasyland</p>
               <p className="text-white/70 text-xs truncate">{portalLabel}</p>
             </div>
           </div>
@@ -1225,7 +1238,7 @@ export function VisitorLayout({ children }: { children: ReactNode }) {
   return (
     <PortalHeader
       portalLabel="Visitor Portal"
-      portalIcon={<img src="/images__6_-removebg-preview.png" alt="Gloria's Fantasyland" className="w-14 h-14 object-contain" />}
+      portalIcon={<img src="/images__6_-removebg-preview.png" alt="Glorious Fantasyland" className="w-14 h-14 object-contain" />}
       iconWrapperClassName="w-14 h-14 flex items-center justify-center"
       accentColor="bg-emerald-600"
       avatarColor="bg-emerald-700"
@@ -1240,7 +1253,7 @@ export function AttendantLayout({ children }: { children: ReactNode }) {
   return (
     <PortalHeader
       portalLabel="Ride Attendant Portal"
-      portalIcon={<img src="/images__6_-removebg-preview.png" alt="Gloria's Fantasyland" className="w-14 h-14 object-contain" />}
+      portalIcon={<img src="/images__6_-removebg-preview.png" alt="Glorious Fantasyland" className="w-14 h-14 object-contain" />}
       iconWrapperClassName="w-14 h-14 flex items-center justify-center"
       accentColor="bg-amber-600"
       avatarColor="bg-amber-700"

@@ -1325,7 +1325,7 @@ export function VisitorDashboard() {
         <div className="relative z-10 flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="inline-flex items-center gap-2 bg-white/20 text-white text-xs px-3 py-1 rounded-full mb-3 border border-white/30">
-              <MapPin className="w-3 h-3" /> Gloria's Fantasyland
+              <MapPin className="w-3 h-3" /> Glorious Fantasyland
             </div>
             <h1 className="text-2xl font-bold mb-1">{greeting}, {user?.firstName}! 🎢</h1>
             <p className="text-white/80 text-sm">Ready for an adventure? Browse attractions and pick a schedule.</p>

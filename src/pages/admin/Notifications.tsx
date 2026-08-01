@@ -19,8 +19,12 @@ const READ_OPTS = [
 // the dropdown read consistently. ──
 function getNotificationVisual(n: Notification) {
   const t = n.title.toLowerCase()
-  if (t.includes('reject') || t.includes('cancel'))
+  if (t.includes('reject'))
     return { Icon: XCircle, bg: 'bg-red-100', text: 'text-red-600', border: 'border-red-200', dot: 'bg-red-500' }
+  // ✅ CHANGED — cancellations are now blue instead of red, matching the
+  // header bell's getNotificationVisual. Rejections stay red.
+  if (t.includes('cancel'))
+    return { Icon: XCircle, bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-200', dot: 'bg-blue-500' }
   if (t.includes('paid') || t.includes('payment'))
     return { Icon: Wallet, bg: 'bg-emerald-100', text: 'text-emerald-600', border: 'border-emerald-200', dot: 'bg-emerald-500' }
   if (t.includes('approved') || t.includes('reopened'))
