@@ -52,4 +52,7 @@ src/
 
 ## Documentation
 
-- [`docs/adr/ADR-001-domain-naming.md`](./docs/adr/ADR-001-domain-naming.md) — why the code/API contract use `Ride`/`RidePromo` naming while every screen displays "Attraction"/"Attraction Bundle"
+Project documentation lives under [`documentations/`](./documentations):
+
+- [`documentations/adr/`](./documentations/adr) — Architecture Decision Records: written records of notable engineering/design decisions and the reasoning behind them, indexed there as they're added
+- [`documentations/use_cases/`](./documentations/use_cases) — the formal project use case document (actors, use cases, detailed flows), shared with the [AmuseFlowWebAPI](../AmuseFlowWebAPI) backend
