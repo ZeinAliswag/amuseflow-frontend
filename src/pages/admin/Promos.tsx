@@ -5,14 +5,27 @@ import {
   CheckCircle2, Search,
   ChevronLeft, ChevronRight, ZoomIn, X, Loader2, ChevronDown,
   Tag, Calendar, FerrisWheel, Check, Clock, AlarmClock, CalendarCheck,
-  Eye, CalendarDays, Layers, CheckCheck, Users, Star
+  CalendarDays, Layers, CheckCheck, Users, Star, Ruler, Cake, Weight,
+  Type, Banknote, SortAsc, SortDesc, Filter
 } from 'lucide-react'
-import type { RidePromo, Ride, Schedule, PaginationRequest } from '../../types'
+import type { RidePromo, Ride, Schedule, PaginationRequest, PromoRideItem } from '../../types'
 import api, { promoApi } from '../../services/api'
 import toast from 'react-hot-toast'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
 const fmt = (n: any) => Number(n ?? 0).toFixed(2)
+
+// ✅ NEW — same combining rule as the Visitor dashboard: the widest range
+// that still covers every included ride's own restriction, so admins see
+// one set of numbers per bundle instead of per-ride.
+function combinePromoRange(rides: PromoRideItem[], minKey: 'minHeightCm'|'minAgeYears'|'minWeightKg', maxKey: 'maxHeightCm'|'maxAgeYears'|'maxWeightKg') {
+  const mins = rides.map(r => r[minKey]).filter((v): v is number => v != null)
+  const maxs = rides.map(r => r[maxKey]).filter((v): v is number => v != null)
+  return {
+    min: mins.length ? Math.max(...mins) : undefined,
+    max: maxs.length ? Math.min(...maxs) : undefined,
+  }
+}
 
 // Formats a TimeOnly string ("10:20:00") into "10:20 AM"
 function fmtTime(t?: string) {
@@ -495,18 +508,21 @@ function PromoRidesModal({ promo, onClose }: { promo: RidePromo; onClose: () => 
   )
 }
 
-// ✅ CHANGED — was labeled "Active", which collided with the Active/Completed
-// lifecycle chips below (two different "Active"s on screen at once). This is
-// really "not soft-deleted", so it's now labeled "Available" with its own icon.
+// ✅ CHANGED — collapsed the two separate "Available/All/Deleted" +
+// "Active/All/Completed" comboboxes into ONE combobox (per request — having
+// two dropdowns that both had an "All" option, one of which silently
+// included deleted bundles, was confusing). Deleted is now its own explicit
+// choice; "All" here really means everything, deleted included.
 const STATUS_OPTS = [
-  { value: 'active', label: 'Available', icon: <Eye className="w-3.5 h-3.5 text-green-600" /> },
-  { value: 'all', label: 'All', icon: <Tag className="w-3.5 h-3.5 text-gray-500" /> },
-  { value: 'deleted', label: 'Deleted', icon: <Trash2 className="w-3.5 h-3.5 text-red-500" /> },
+  { value: 'Active',    label: 'Active',    icon: <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> },
+  { value: 'Completed', label: 'Completed', icon: <CheckCheck className="w-3.5 h-3.5 text-blue-600" /> },
+  { value: 'Deleted',   label: 'Deleted',   icon: <Trash2 className="w-3.5 h-3.5 text-red-500" /> },
+  { value: 'All',       label: 'All',       icon: <Layers className="w-3.5 h-3.5 text-gray-500" /> },
 ] as const
 
 function StatusCombobox({ value, onChange }: {
-  value: 'active' | 'all' | 'deleted'
-  onChange: (v: 'active' | 'all' | 'deleted') => void
+  value: 'Active' | 'Completed' | 'Deleted' | 'All'
+  onChange: (v: 'Active' | 'Completed' | 'Deleted' | 'All') => void
 }) {
   const [open, setOpen] = useState(false)
   const current = STATUS_OPTS.find(o => o.value === value)
@@ -541,27 +557,64 @@ function StatusCombobox({ value, onChange }: {
   )
 }
 
-// ✅ CHANGED — was a row of chip/pill buttons; now a combobox matching the
-// "Available" and "All dates" filters next to it, per request.
-const LIFECYCLE_OPTS = [
-  { value: 'Active', label: 'Active', icon: <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> },
-  { value: 'All', label: 'All', icon: <Layers className="w-3.5 h-3.5 text-gray-500" /> },
-  { value: 'Completed', label: 'Completed', icon: <CheckCheck className="w-3.5 h-3.5 text-blue-600" /> },
-] as const
+// ── Sort By — combobox (Name / Price / Rating only — bundles don't have a
+// single capacity value, so unlike Admin Rides.tsx there's no Capacity option)
+const PROMO_SORT_BY_OPTS = [
+  { value: '',       label: 'Sort by default', icon: <Filter className="w-3.5 h-3.5 text-gray-400" /> },
+  { value: 'Name',   label: 'Name',   icon: <Type className="w-3.5 h-3.5 text-gray-500" /> },
+  { value: 'Price',  label: 'Price',  icon: <Banknote className="w-3.5 h-3.5 text-gray-500" /> },
+  { value: 'Rating', label: 'Rating', icon: <Star className="w-3.5 h-3.5 text-gray-500" /> },
+]
 
-function LifecycleCombobox({ value, onChange }: {
-  value: 'Active' | 'All' | 'Completed'
-  onChange: (v: 'Active' | 'All' | 'Completed') => void
-}) {
+const PROMO_SORT_DIR_OPTS = [
+  { value: 'DESC', label: 'Descending', icon: <SortDesc className="w-3.5 h-3.5 text-gray-500" /> },
+  { value: 'ASC',  label: 'Ascending',  icon: <SortAsc className="w-3.5 h-3.5 text-gray-500" /> },
+]
+
+function PromoSortByCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false)
-  const current = LIFECYCLE_OPTS.find(o => o.value === value)
+  const current = PROMO_SORT_BY_OPTS.find(o => o.value === value) ?? PROMO_SORT_BY_OPTS[0]
 
   return (
     <div className="relative">
       <button type="button" onClick={() => setOpen(p => !p)}
         className="flex items-center gap-2 pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
-        {current?.icon}
-        {current?.label}
+        {current.icon}
+        {current.label}
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-1 left-0 w-40 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {PROMO_SORT_BY_OPTS.map(o => (
+              <button key={o.value} type="button"
+                onClick={() => { onChange(o.value); setOpen(false) }}
+                className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs transition-colors ${
+                  value === o.value ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+                }`}>
+                {o.icon}
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function PromoSortDirCombobox({ value, onChange }: { value: 'ASC'|'DESC'; onChange: (v: 'ASC'|'DESC') => void }) {
+  const [open, setOpen] = useState(false)
+  const current = PROMO_SORT_DIR_OPTS.find(o => o.value === value) ?? PROMO_SORT_DIR_OPTS[0]
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(p => !p)}
+        className="flex items-center gap-2 pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+        {current.icon}
+        {current.label}
         <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -569,9 +622,9 @@ function LifecycleCombobox({ value, onChange }: {
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute z-20 mt-1 left-0 w-36 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-            {LIFECYCLE_OPTS.map(o => (
+            {PROMO_SORT_DIR_OPTS.map(o => (
               <button key={o.value} type="button"
-                onClick={() => { onChange(o.value); setOpen(false) }}
+                onClick={() => { onChange(o.value as 'ASC'|'DESC'); setOpen(false) }}
                 className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs transition-colors ${
                   value === o.value ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'
                 }`}>
@@ -643,11 +696,9 @@ export default function AdminPromosPage() {
   const [promos, setPromos] = useState<RidePromo[]>([])
   const [pagination, setPagination] = useState({ currentPage: 1, totalPages: 1, totalCount: 0, pageSize: 8 })
   const [params, setParams] = useState<PaginationRequest>({ page: 1, pageSize: 8, search: '' })
-  const [statusFilter, setStatusFilter] = useState<'active' | 'all' | 'deleted'>('active')
-  // ✅ NEW — Active/Completed filter, same chip pattern as the Ride
-  // Attendant's schedule status filter. Independent of the soft-delete
-  // filter above (a deleted promo can still have been Active or Completed).
-  const [activeStatus, setActiveStatus] = useState<'All' | 'Active' | 'Completed'>('Active')
+  // ✅ CHANGED — single combined filter (Active/Completed/Deleted/All)
+  // replacing the two separate soft-delete + lifecycle comboboxes.
+  const [statusFilter, setStatusFilter] = useState<'Active' | 'Completed' | 'Deleted' | 'All'>('Active')
   // ✅ NEW — filter promos by their promoDate falling within a range.
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -667,7 +718,6 @@ export default function AdminPromosPage() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState('')
   const [saving, setSaving] = useState(false)
-  const [formErr, setFormErr] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [deleteTarget, setDeleteTarget] = useState<RidePromo | null>(null)
@@ -728,13 +778,16 @@ export default function AdminPromosPage() {
   const fetchPromos = async () => {
     setLoading(true)
     try {
-      const showDel = statusFilter !== 'active'
+      // ✅ CHANGED — one combined filter now: only "Deleted" and "All" ever
+      // need deleted bundles included from the backend.
+      const showDel = statusFilter === 'Deleted' || statusFilter === 'All'
       const res = await promoApi.getAll({ ...params, includeDeleted: showDel })
       const d = (res.data as any)?.data?.data ?? (res.data as any)?.data ?? res.data
       let list: any[] = Array.isArray(d) ? d : []
-      if (statusFilter === 'deleted') list = list.filter((p: any) => p.isDeleted)
-      if (statusFilter === 'active') list = list.filter((p: any) => !p.isDeleted)
-      if (activeStatus !== 'All') list = list.filter((p: any) => p.status === activeStatus)
+      if (statusFilter === 'Deleted') list = list.filter((p: any) => p.isDeleted)
+      else if (statusFilter === 'Active') list = list.filter((p: any) => !p.isDeleted && p.status === 'Active')
+      else if (statusFilter === 'Completed') list = list.filter((p: any) => !p.isDeleted && p.status === 'Completed')
+      // 'All' — no isDeleted/status filtering at all.
       if (dateFrom) list = list.filter((p: any) => p.promoDate?.slice(0, 10) >= dateFrom)
       if (dateTo) list = list.filter((p: any) => p.promoDate?.slice(0, 10) <= dateTo)
       setPromos(list)
@@ -745,11 +798,11 @@ export default function AdminPromosPage() {
   }
 
   useEffect(() => { fetchRides(); fetchSchedules() }, [])
-  useEffect(() => { fetchPromos() }, [params, statusFilter, activeStatus, dateFrom, dateTo])
+  useEffect(() => { fetchPromos() }, [params, statusFilter, dateFrom, dateTo])
 
   const openCreate = () => {
     setEditPromo(null); setForm({ ...emptyForm }); setSavedForm({ ...emptyForm })
-    setImageFile(null); setImagePreview(''); setFormErr(''); setModalOpen(true)
+    setImageFile(null); setImagePreview(''); setModalOpen(true)
   }
 
   const openEdit = (promo: RidePromo) => {
@@ -766,7 +819,7 @@ export default function AdminPromosPage() {
     setSavedForm({ ...loaded })
     setImageFile(null)
     setImagePreview(promo.imagePath ? getImageUrl(promo.imagePath)! : '')
-    setFormErr(''); setModalOpen(true)
+    setModalOpen(true)
   }
 
   // ✅ NEW — Save button stays disabled until something actually differs from
@@ -828,16 +881,18 @@ export default function AdminPromosPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    setFormErr('')
     const priceNum = parseFloat(String(form.price))
-    if (!form.name) { setFormErr('Bundle name is required.'); return }
-    if (isNaN(priceNum) || priceNum < 0) { setFormErr('Please enter a valid price.'); return }
-    if (!form.promoDate) { setFormErr('Bundle date is required.'); return }
-    if (form.rideIds.length < 2) { setFormErr('Select at least two attractions for this bundle.'); return }
+    // ✅ CHANGED — every validation message now goes through toast instead of
+    // the native browser bubble (form has noValidate) or the inline red
+    // banner this used to render (removed, along with the formErr state).
+    if (!form.name) { toast.error('Bundle name is required.'); return }
+    if (isNaN(priceNum) || priceNum < 0) { toast.error('Please enter a valid price.'); return }
+    if (!form.promoDate) { toast.error('Bundle date is required.'); return }
+    if (form.rideIds.length < 2) { toast.error('Select at least two attractions for this bundle.'); return }
     if (form.rideIds.some(id => !form.scheduleByRide[id])) {
-      setFormErr('Pick a schedule for every selected attraction.'); return
+      toast.error('Pick a schedule for every selected attraction.'); return
     }
-    if (!editPromo && !imageFile) { setFormErr('Image is required for new bundles.'); return }
+    if (!editPromo && !imageFile) { toast.error('Image is required for new bundles.'); return }
 
     setSaving(true)
     try {
@@ -861,7 +916,7 @@ export default function AdminPromosPage() {
       }
       setModalOpen(false); fetchPromos()
     } catch (e: any) {
-      setFormErr(e.response?.data?.message ?? 'Failed to save bundle.')
+      toast.error(e.response?.data?.message ?? 'Failed to save bundle.')
     } finally {
       setSaving(false)
     }
@@ -917,9 +972,13 @@ export default function AdminPromosPage() {
             value={statusFilter}
             onChange={v => { setStatusFilter(v); setParams(p => ({ ...p, page: 1 })) }}
           />
-          <LifecycleCombobox
-            value={activeStatus}
-            onChange={v => { setActiveStatus(v); setParams(p => ({ ...p, page: 1 })) }}
+          <PromoSortByCombobox
+            value={params.sortBy ?? ''}
+            onChange={v => setParams(p => ({ ...p, sortBy: v, page: 1 }))}
+          />
+          <PromoSortDirCombobox
+            value={(params.sortDirection as 'ASC'|'DESC') ?? 'DESC'}
+            onChange={v => setParams(p => ({ ...p, sortDirection: v, page: 1 }))}
           />
           <DateRangeButton
             from={dateFrom} to={dateTo}
@@ -1024,6 +1083,40 @@ export default function AdminPromosPage() {
                       )}
                     </div>
 
+                    {/* ✅ NEW — combined restriction badges across every ride
+                        in the bundle, same treatment as the Visitor bundle
+                        card, so admins can see requirements at a glance. */}
+                    {(() => {
+                      const h = combinePromoRange(promo.rides, 'minHeightCm', 'maxHeightCm')
+                      const a = combinePromoRange(promo.rides, 'minAgeYears', 'maxAgeYears')
+                      const w = combinePromoRange(promo.rides, 'minWeightKg', 'maxWeightKg')
+                      const hasAny = h.min != null || h.max != null || a.min != null || a.max != null || w.min != null || w.max != null
+                      if (!hasAny) return null
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap mb-3"
+                          title="Every guest in the party must meet all of these across every included attraction">
+                          {(h.min != null || h.max != null) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-1">
+                              <Ruler className="w-3 h-3" />
+                              {h.min != null && h.max != null ? `${h.min}-${h.max}cm` : h.min != null ? `${h.min}cm+` : `Up to ${h.max}cm`}
+                            </span>
+                          )}
+                          {(a.min != null || a.max != null) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-1">
+                              <Cake className="w-3 h-3" />
+                              {a.min != null && a.max != null ? `${a.min}-${a.max}y` : a.min != null ? `${a.min}y+` : `Up to ${a.max}y`}
+                            </span>
+                          )}
+                          {(w.min != null || w.max != null) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2 py-1">
+                              <Weight className="w-3 h-3" />
+                              {w.min != null && w.max != null ? `${w.min}-${w.max}kg` : w.min != null ? `${w.min}kg+` : `Up to ${w.max}kg`}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })()}
+
                     <div className="flex items-center justify-end gap-2">
                       {promo.isDeleted ? (
                         pastDate ? (
@@ -1116,7 +1209,11 @@ export default function AdminPromosPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            {/* ✅ CHANGED — noValidate so the browser's native validation
+                bubble ("Value must be less than or equal to...") never
+                appears; every check now runs in handleSubmit and reports
+                via toast instead. */}
+            <form onSubmit={handleSubmit} noValidate className="p-6 space-y-5">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Bundle photo {!editPromo && <span className="text-red-500">*</span>}
@@ -1277,10 +1374,6 @@ export default function AdminPromosPage() {
                   </>
                 )}
               </div>
-
-              {formErr && (
-                <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">⚠ {formErr}</div>
-              )}
 
               <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
                 <button type="button" onClick={() => setModalOpen(false)}

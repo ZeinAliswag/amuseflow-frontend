@@ -243,11 +243,24 @@ export default function AdminUsersPage() {
   // ── Create staff ──────────────────────────────────────────
   const handleCreateStaff = async (e: FormEvent) => {
     e.preventDefault()
+    // ✅ NEW — these fields used to rely purely on the native `required`
+    // attribute (silent browser bubble); now caught explicitly so
+    // noValidate on the form doesn't leave them unchecked client-side.
+    if (!createForm.firstName.trim()) { toast.error('First name is required.'); return }
+    if (!createForm.lastName.trim())  { toast.error('Last name is required.'); return }
+    if (!createForm.username.trim())  { toast.error('Username is required.'); return }
     const digits = createForm.contactNumber.replace(/\D/g, '')
     if (!/^09\d{9}$/.test(digits)) {
       toast.error('Enter a valid PH mobile number (e.g. 0912 345 6789).')
       return
     }
+    // ✅ NEW — same complexity rule the edit-password flow already enforces,
+    // now applied here too instead of leaving it to a generic backend error.
+    if (createForm.password.length < 8) { toast.error('Password must be at least 8 characters.'); return }
+    if (!/[A-Z]/.test(createForm.password)) { toast.error('Password must have at least 1 uppercase letter.'); return }
+    if (!/[a-z]/.test(createForm.password)) { toast.error('Password must have at least 1 lowercase letter.'); return }
+    if (!/[0-9]/.test(createForm.password)) { toast.error('Password must have at least 1 number.'); return }
+    if (!/[@$!%*?&]/.test(createForm.password)) { toast.error('Password must have at least 1 special character (@$!%*?&).'); return }
     setConfirmCreate(true)
   }
   const doCreateStaff = async () => {
@@ -565,7 +578,10 @@ export default function AdminUsersPage() {
 
       {/* ── Create staff modal ── */}
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create staff account" size="sm">
-        <form onSubmit={handleCreateStaff} className="space-y-4">
+        {/* ✅ CHANGED — noValidate so the browser's native validation bubble
+            never appears; every check now runs in handleCreateStaff and
+            reports via toast instead. */}
+        <form onSubmit={handleCreateStaff} noValidate className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">First name <span className="text-red-500">*</span></label>

@@ -113,6 +113,16 @@ export interface Schedule {
   availableSlots: number
   status: string
   scheduleType: string  // ✅ NEW — 'Regular' | 'Promo', fully separate pools
+
+  // ✅ NEW — the ride's own restrictions, joined in by the backend so the
+  // attendant's assigned-schedules list can show them without a second
+  // lookup against the ride itself.
+  minHeightCm?: number
+  maxHeightCm?: number
+  minAgeYears?: number
+  maxAgeYears?: number
+  minWeightKg?: number
+  maxWeightKg?: number
 }
 
 // ── Ride Promo ────────────────────────────────────────────────

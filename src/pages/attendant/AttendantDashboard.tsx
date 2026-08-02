@@ -3,7 +3,7 @@ import {
   Scan, CheckCircle2, Calendar, Clock, Users, AlertCircle, XCircle,
   Wallet, Loader2, Ticket, ChevronRight, ChevronLeft, ChevronDown, Sparkles, ClipboardCheck,
 TrendingUp, X, ZoomIn, AlarmClock,
-  FerrisWheel, Tag, CalendarDays
+  FerrisWheel, Tag, CalendarDays, Ruler, Cake, Weight
 } from 'lucide-react'
 import type { Schedule, Booking, PagedResponse, PaginationRequest } from '../../types'
 import api from '../../services/api'
@@ -1273,6 +1273,41 @@ export function AttendantDashboard() {
                         <span className="flex items-center gap-1"><Users className="w-3 h-3" />{s.availableSlots}/{s.maxSlots}</span>
                         <CallTimeBadge time={s.callTime} />
                       </div>
+                      {/* ✅ NEW — same restriction badges shown on the ride/
+                          bundle cards, so an attendant can see height/age/
+                          weight requirements right in the assigned list
+                          without opening the roster. */}
+                      {(s.minHeightCm != null || s.maxHeightCm != null
+                        || s.minAgeYears != null || s.maxAgeYears != null
+                        || s.minWeightKg != null || s.maxWeightKg != null) && (
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1.5"
+                          title="Every guest in the party must meet all of these to be let onto this ride">
+                          {(s.minHeightCm != null || s.maxHeightCm != null) && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-1.5 py-0.5">
+                              <Ruler className="w-2.5 h-2.5" />
+                              {s.minHeightCm != null && s.maxHeightCm != null
+                                ? `${s.minHeightCm}-${s.maxHeightCm}cm`
+                                : s.minHeightCm != null ? `${s.minHeightCm}cm+` : `Up to ${s.maxHeightCm}cm`}
+                            </span>
+                          )}
+                          {(s.minAgeYears != null || s.maxAgeYears != null) && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-1.5 py-0.5">
+                              <Cake className="w-2.5 h-2.5" />
+                              {s.minAgeYears != null && s.maxAgeYears != null
+                                ? `${s.minAgeYears}-${s.maxAgeYears}y`
+                                : s.minAgeYears != null ? `${s.minAgeYears}y+` : `Up to ${s.maxAgeYears}y`}
+                            </span>
+                          )}
+                          {(s.minWeightKg != null || s.maxWeightKg != null) && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-1.5 py-0.5">
+                              <Weight className="w-2.5 h-2.5" />
+                              {s.minWeightKg != null && s.maxWeightKg != null
+                                ? `${s.minWeightKg}-${s.maxWeightKg}kg`
+                                : s.minWeightKg != null ? `${s.minWeightKg}kg+` : `Up to ${s.maxWeightKg}kg`}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <span className={`px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0
                       ${s.status === 'Open' ? 'bg-green-100 text-green-700'

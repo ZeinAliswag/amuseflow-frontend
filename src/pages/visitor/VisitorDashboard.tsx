@@ -4,7 +4,8 @@ import {
   Users, Calendar, ChevronLeft, ChevronRight, ChevronDown,
   Search, MapPin, ZoomIn, X, Loader2, ArrowLeft,
   UserCog, CalendarDays, AlarmClock,
-  FerrisWheel, Tag, PackageCheck, Star
+  FerrisWheel, Tag, PackageCheck, Star, Ruler, Cake, Weight,
+  Filter, Banknote, SortAsc, SortDesc, Type, Maximize2
 } from 'lucide-react'
 import type { Booking, Ride, RidePromo, PromoRideItem, PaginationRequest } from '../../types'
 import api, { promoApi, bookingApi, reviewApi } from '../../services/api'
@@ -113,6 +114,163 @@ function ViewToggle({ value, onChange }: { value: 'rides' | 'promos'; onChange: 
         }`}>
         <Tag className="w-3.5 h-3.5" /> Bundles
       </button>
+    </div>
+  )
+}
+
+// ── Sort options — Price and Rating only (the two things a visitor
+// actually cares about when comparing attractions), same combobox look as
+// Admin's Rides.tsx. Direction defaults to Ascending since that's the
+// common case here (cheapest / lowest-rated first when actively sorting). ──
+const RIDE_SORT_BY_OPTS = [
+  { value: '',            label: 'Sort by default', icon: <Filter className="w-3.5 h-3.5 text-gray-400" /> },
+  { value: 'Name',        label: 'Name',            icon: <Type className="w-3.5 h-3.5 text-gray-500" /> },
+  { value: 'Price',       label: 'Price',           icon: <Banknote className="w-3.5 h-3.5 text-gray-500" /> },
+  { value: 'MaxCapacity', label: 'Capacity',        icon: <Maximize2 className="w-3.5 h-3.5 text-gray-500" /> },
+  { value: 'Rating',      label: 'Rating',          icon: <Star className="w-3.5 h-3.5 text-gray-500" /> },
+]
+
+const RIDE_SORT_DIR_OPTS = [
+  { value: 'ASC',  label: 'Ascending',  icon: <SortAsc className="w-3.5 h-3.5 text-gray-500" /> },
+  { value: 'DESC', label: 'Descending', icon: <SortDesc className="w-3.5 h-3.5 text-gray-500" /> },
+]
+
+function RideSortByCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const current = RIDE_SORT_BY_OPTS.find(o => o.value === value) ?? RIDE_SORT_BY_OPTS[0]
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(p => !p)}
+        className="flex items-center gap-2 pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+        {current.icon}
+        {current.label}
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-1 left-0 w-40 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {RIDE_SORT_BY_OPTS.map(o => (
+              <button key={o.value} type="button"
+                onClick={() => { onChange(o.value); setOpen(false) }}
+                className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs transition-colors ${
+                  value === o.value ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+                }`}>
+                {o.icon}
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function RideSortDirCombobox({ value, onChange }: { value: 'ASC'|'DESC'; onChange: (v: 'ASC'|'DESC') => void }) {
+  const [open, setOpen] = useState(false)
+  const current = RIDE_SORT_DIR_OPTS.find(o => o.value === value) ?? RIDE_SORT_DIR_OPTS[0]
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(p => !p)}
+        className="flex items-center gap-2 pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+        {current.icon}
+        {current.label}
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-1 left-0 w-36 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {RIDE_SORT_DIR_OPTS.map(o => (
+              <button key={o.value} type="button"
+                onClick={() => { onChange(o.value as 'ASC'|'DESC'); setOpen(false) }}
+                className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs transition-colors ${
+                  value === o.value ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+                }`}>
+                {o.icon}
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Bundles sort — Name/Price only, client-side (promos aren't paginated
+// or sorted server-side on this tab) ────────────────────────────────
+const PROMO_SORT_BY_OPTS = [
+  { value: '',      label: 'Sort by default', icon: <Filter className="w-3.5 h-3.5 text-gray-400" /> },
+  { value: 'Name',  label: 'Name',            icon: <Type className="w-3.5 h-3.5 text-gray-500" /> },
+  { value: 'Price', label: 'Price',           icon: <Banknote className="w-3.5 h-3.5 text-gray-500" /> },
+]
+
+function PromoSortByCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const current = PROMO_SORT_BY_OPTS.find(o => o.value === value) ?? PROMO_SORT_BY_OPTS[0]
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(p => !p)}
+        className="flex items-center gap-2 pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+        {current.icon}
+        {current.label}
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-1 left-0 w-40 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {PROMO_SORT_BY_OPTS.map(o => (
+              <button key={o.value} type="button"
+                onClick={() => { onChange(o.value); setOpen(false) }}
+                className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs transition-colors ${
+                  value === o.value ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+                }`}>
+                {o.icon}
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function PromoSortDirCombobox({ value, onChange }: { value: 'ASC'|'DESC'; onChange: (v: 'ASC'|'DESC') => void }) {
+  const [open, setOpen] = useState(false)
+  const current = RIDE_SORT_DIR_OPTS.find(o => o.value === value) ?? RIDE_SORT_DIR_OPTS[0]
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(p => !p)}
+        className="flex items-center gap-2 pl-3 pr-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+        {current.icon}
+        {current.label}
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-1 left-0 w-36 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {RIDE_SORT_DIR_OPTS.map(o => (
+              <button key={o.value} type="button"
+                onClick={() => { onChange(o.value as 'ASC'|'DESC'); setOpen(false) }}
+                className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs transition-colors ${
+                  value === o.value ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+                }`}>
+                {o.icon}
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -1030,6 +1188,19 @@ export function VisitorDashboard() {
   const [viewMode, setViewMode] = useState<'rides' | 'promos'>('rides')
   const [promos, setPromos]       = useState<RidePromo[]>([])
   const [promoLoading, setPromoLoading] = useState(true)
+  // ✅ NEW — bundles are fetched once (not paginated/sorted server-side), so
+  // sorting is done client-side over the already-fetched list.
+  const [promoSortBy, setPromoSortBy]   = useState<'' | 'Name' | 'Price'>('')
+  const [promoSortDir, setPromoSortDir] = useState<'ASC' | 'DESC'>('ASC')
+
+  // ✅ NEW — derived, sorted view of `promos`; recomputed on every render
+  // (list is capped at 50 items, so a plain sort here is cheap enough to
+  // skip useMemo).
+  const sortedPromos = !promoSortBy ? promos : [...promos].sort((a, b) => {
+    const dir = promoSortDir === 'ASC' ? 1 : -1
+    if (promoSortBy === 'Name') return a.name.localeCompare(b.name) * dir
+    return (a.price - b.price) * dir
+  })
 
   // selected promo — schedules are LOCKED IN per ride by the admin already,
   // so there's no schedule-picking step here, just a direct book button.
@@ -1372,6 +1543,14 @@ export function VisitorDashboard() {
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <ViewToggle value={viewMode} onChange={setViewMode} />
+                {/* ✅ NEW — sort by Price or Rating, ascending by default,
+                    same combobox style as Admin's Rides.tsx. */}
+                <RideSortByCombobox
+                  value={rideParams.sortBy ?? ''}
+                  onChange={v => setRideParams(p => ({ ...p, sortBy: v || undefined, page: 1 }))} />
+                <RideSortDirCombobox
+                  value={rideParams.sortDirection ?? 'ASC'}
+                  onChange={v => setRideParams(p => ({ ...p, sortDirection: v, page: 1 }))} />
                 <div className="relative w-full sm:w-auto">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
                   <input value={search}
@@ -1437,6 +1616,41 @@ export function VisitorDashboard() {
                           <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />{ride.maxCapacity}</span>
                           <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{ride.durationMinutes}m</span>
                         </div>
+                        {/* ✅ NEW — same restriction badges shown on the Admin
+                            Rides card, surfaced here so visitors see height/age/
+                            weight requirements while browsing, before they ever
+                            open the booking modal. */}
+                        {(ride.minHeightCm != null || ride.maxHeightCm != null
+                          || ride.minAgeYears != null || ride.maxAgeYears != null
+                          || ride.minWeightKg != null || ride.maxWeightKg != null) && (
+                          <div className="flex items-center gap-1.5 flex-wrap mb-3"
+                            title="Every guest in the party must meet all of these to book this attraction">
+                            {(ride.minHeightCm != null || ride.maxHeightCm != null) && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-1 cursor-default">
+                                <Ruler className="w-3 h-3" />
+                                {ride.minHeightCm != null && ride.maxHeightCm != null
+                                  ? `${ride.minHeightCm}-${ride.maxHeightCm}cm`
+                                  : ride.minHeightCm != null ? `${ride.minHeightCm}cm+` : `Up to ${ride.maxHeightCm}cm`}
+                              </span>
+                            )}
+                            {(ride.minAgeYears != null || ride.maxAgeYears != null) && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-1 cursor-default">
+                                <Cake className="w-3 h-3" />
+                                {ride.minAgeYears != null && ride.maxAgeYears != null
+                                  ? `${ride.minAgeYears}-${ride.maxAgeYears}y`
+                                  : ride.minAgeYears != null ? `${ride.minAgeYears}y+` : `Up to ${ride.maxAgeYears}y`}
+                              </span>
+                            )}
+                            {(ride.minWeightKg != null || ride.maxWeightKg != null) && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2 py-1 cursor-default">
+                                <Weight className="w-3 h-3" />
+                                {ride.minWeightKg != null && ride.maxWeightKg != null
+                                  ? `${ride.minWeightKg}-${ride.maxWeightKg}kg`
+                                  : ride.minWeightKg != null ? `${ride.minWeightKg}kg+` : `Up to ${ride.maxWeightKg}kg`}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <button
                           onClick={() => fetchSchedules(ride)}
                           className="w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm">
@@ -1586,7 +1800,11 @@ export function VisitorDashboard() {
                   </h3>
                   <p className="text-xs text-gray-500">Bundle deals — click a bundle to pick schedules and book.</p>
                 </div>
-                <ViewToggle value={viewMode} onChange={setViewMode} />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <PromoSortByCombobox value={promoSortBy} onChange={v => setPromoSortBy(v as '' | 'Name' | 'Price')} />
+                  <PromoSortDirCombobox value={promoSortDir} onChange={setPromoSortDir} />
+                  <ViewToggle value={viewMode} onChange={setViewMode} />
+                </div>
               </div>
 
               {promoLoading ? (
@@ -1600,7 +1818,7 @@ export function VisitorDashboard() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-5">
-                  {promos.map(promo => {
+                  {sortedPromos.map(promo => {
                     const available = promoIsAvailable(promo)
                     return (
                       <div key={promo.id}
@@ -1650,6 +1868,40 @@ export function VisitorDashboard() {
                               </span>
                             ))}
                           </div>
+                          {/* ✅ NEW — combined restriction badges across every
+                              ride in this bundle (widest range that covers all
+                              of them), same visual treatment as a single-ride
+                              card so visitors see requirements up front. */}
+                          {(() => {
+                            const h = combinePromoRange(promo.rides, 'minHeightCm', 'maxHeightCm')
+                            const a = combinePromoRange(promo.rides, 'minAgeYears', 'maxAgeYears')
+                            const w = combinePromoRange(promo.rides, 'minWeightKg', 'maxWeightKg')
+                            const hasAny = h.min != null || h.max != null || a.min != null || a.max != null || w.min != null || w.max != null
+                            if (!hasAny) return null
+                            return (
+                              <div className="flex items-center gap-1.5 flex-wrap mb-3"
+                                title="Every guest in the party must meet all of these across every included attraction">
+                                {(h.min != null || h.max != null) && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-1 cursor-default">
+                                    <Ruler className="w-3 h-3" />
+                                    {h.min != null && h.max != null ? `${h.min}-${h.max}cm` : h.min != null ? `${h.min}cm+` : `Up to ${h.max}cm`}
+                                  </span>
+                                )}
+                                {(a.min != null || a.max != null) && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-1 cursor-default">
+                                    <Cake className="w-3 h-3" />
+                                    {a.min != null && a.max != null ? `${a.min}-${a.max}y` : a.min != null ? `${a.min}y+` : `Up to ${a.max}y`}
+                                  </span>
+                                )}
+                                {(w.min != null || w.max != null) && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2 py-1 cursor-default">
+                                    <Weight className="w-3 h-3" />
+                                    {w.min != null && w.max != null ? `${w.min}-${w.max}kg` : w.min != null ? `${w.min}kg+` : `Up to ${w.max}kg`}
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })()}
                           <button disabled={!available}
                             onClick={() => available && openPromo(promo)}
                             className="w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">

@@ -1256,7 +1256,11 @@ export default function AdminSchedulesPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitClick} className="p-6 space-y-4">
+            {/* ✅ CHANGED — noValidate so the browser's native validation
+                bubble ("Value must be less than or equal to...") never
+                appears; every check already runs in handleSubmitClick and
+                reports via toast instead. */}
+            <form onSubmit={handleSubmitClick} noValidate className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Attraction <span className="text-red-500">*</span></label>
                 <SearchableSelect
@@ -1465,7 +1469,11 @@ export default function AdminSchedulesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Max slots <span className="text-red-500">*</span></label>
-                <input type="number" required min="1" max="500" value={form.maxSlots}
+                {/* ✅ CHANGED — dropped required/min/max so the browser's
+                    native validation bubble never fires; the real checks
+                    (>=1, and can't exceed the ride's own capacity) already
+                    run in handleSubmit and report via toast. */}
+                <input type="number" min="1" value={form.maxSlots}
                   onChange={e => setForm({...form, maxSlots: parseInt(e.target.value)})}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300" />
                 {(() => {

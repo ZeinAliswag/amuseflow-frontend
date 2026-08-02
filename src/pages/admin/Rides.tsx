@@ -77,6 +77,10 @@ const SORT_BY_OPTS = [
   { value: 'Name', label: 'Name', icon: <Type className="w-3.5 h-3.5 text-gray-500" /> },
   { value: 'Price', label: 'Price', icon: <Banknote className="w-3.5 h-3.5 text-gray-500" /> },
   { value: 'MaxCapacity', label: 'Capacity', icon: <Maximize2 className="w-3.5 h-3.5 text-gray-500" /> },
+  // ✅ NEW — backend now supports this (RideRepository substitutes a
+  // correlated AVG(Rating) subquery for this one value; see the frontend
+  // Visitor sort control, which added the same option first).
+  { value: 'Rating', label: 'Rating', icon: <Star className="w-3.5 h-3.5 text-gray-500" /> },
 ]
 
 const SORT_DIR_OPTS = [
@@ -333,6 +337,11 @@ export default function AdminRidesPage() {
     if (!form.name)           { toast.error('Attraction name is required.'); return }
     if (isNaN(priceNum) || priceNum < 0) { toast.error('Please enter a valid price.'); return }
     if (!editRide && !imageFile) { toast.error('Image is required for new attractions.'); return }
+    // ✅ NEW — these used to rely purely on the native min="1" attribute
+    // (silent browser bubble); now caught explicitly so noValidate on the
+    // form doesn't leave them unchecked client-side.
+    if (!form.maxCapacity || Number(form.maxCapacity) < 1) { toast.error('Capacity must be at least 1.'); return }
+    if (!form.durationMinutes || Number(form.durationMinutes) < 1) { toast.error('Duration must be at least 1 minute.'); return }
     // ✅ CHANGED — used to mirror the backend's static [Range]
     // DataAnnotations on CreateRideRequest with hardcoded numbers. Those
     // attributes are gone; the bounds now come from the admin-configurable
@@ -685,7 +694,10 @@ export default function AdminRidesPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            {/* ✅ CHANGED — noValidate so the browser's native validation
+                bubble never appears; every check now runs in handleSubmit
+                and reports via toast instead. */}
+            <form onSubmit={handleSubmit} noValidate className="p-6 space-y-5">
               {/* Image — clickable to zoom */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
