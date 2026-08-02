@@ -56,3 +56,4 @@ Project documentation lives under [`documentations/`](./documentations):
 
 - [`documentations/adr/`](./documentations/adr) — Architecture Decision Records: written records of notable engineering/design decisions and the reasoning behind them, indexed there as they're added
 - [`documentations/use_cases/`](./documentations/use_cases) — the formal project use case document (actors, use cases, detailed flows), shared with the [AmuseFlowWebAPI](../AmuseFlowWebAPI) backend
+
