@@ -245,7 +245,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             page change. window.scrollTo() doesn't work here because the
             outer app shell is h-screen/overflow-hidden — this div, not the
             browser window, is what actually scrolls. */}
-        <div id="admin-scroll-area" className="flex-1 overflow-y-auto">
+        {/* ✅ CHANGED — added scroll-smooth here (CSS scroll-behavior) so
+            pagination's scrollTop = 0 reset animates where supported, since
+            the JS Element.scrollTo({behavior:'smooth'}) API has spotty
+            support on some mobile browsers for non-body scroll containers
+            — this degrades gracefully to an instant (still correct) jump
+            instead of silently doing nothing. */}
+        <div id="admin-scroll-area" className="flex-1 overflow-y-auto scroll-smooth">
           {children}
         </div>
       </main>

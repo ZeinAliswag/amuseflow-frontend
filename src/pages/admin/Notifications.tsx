@@ -425,11 +425,17 @@ export default function AdminNotificationsPage() {
 
   useEffect(() => { fetchNotifications(); fetchUnreadCount() }, [params, readFilter, dateFrom, dateTo])
 
-  // ✅ FIXED — was window.scrollTo(), which is a no-op here: AdminLayout's
-  // outer shell is h-screen/overflow-hidden, so the actual scrolling
-  // element is the #admin-scroll-area div it renders {children} into, not
-  // the window/document. Scroll THAT container back to top instead.
-  useEffect(() => { document.getElementById('admin-scroll-area')?.scrollTo({ top: 0, behavior: 'smooth' }) }, [params.page])
+  // ✅ FIXED (again) — was window.scrollTo(), a no-op since AdminLayout's
+  // real scroll container is #admin-scroll-area, not the window. Then
+  // switched away from el.scrollTo({behavior:'smooth'}) too, since that JS
+  // API doesn't reliably animate on non-body scroll containers on some
+  // mobile browsers and was silently doing nothing on phones. Setting
+  // scrollTop directly always works; the container's own `scroll-smooth`
+  // CSS class (AdminLayout.tsx) animates it wherever that's supported.
+  useEffect(() => {
+    const el = document.getElementById('admin-scroll-area')
+    if (el) el.scrollTop = 0
+  }, [params.page])
 
   const fetchUnreadCount = async () => {
     try {
