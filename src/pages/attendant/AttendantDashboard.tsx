@@ -519,10 +519,20 @@ function RosterModal({ schedule, bookings, loading, onClose, onZoom }: {
           <div className="flex items-center gap-3 min-w-0">
             <RideThumb path={ridePhoto} name={schedule.rideName} size="w-10 h-10" iconSize="w-4 h-4" bg="bg-amber-50" onZoom={onZoom} />
             <div className="min-w-0">
+              {/* ✅ CHANGED — the bundle name used to repeat as a separate
+                  pink pill on every single booking row below (redundant,
+                  since every booking in this modal is for the same
+                  schedule). Shown once here in the header instead, right
+                  under the ride name. */}
               <div className="flex items-center gap-1.5">
                 <div className="font-bold text-gray-900 text-sm truncate">{schedule.rideName}</div>
                 <ScheduleTypeBadge type={schedule.scheduleType} />
               </div>
+              {schedule.promoName && (
+                <div className="flex items-center gap-1 text-xs text-pink-600 font-semibold truncate">
+                  <Tag className="w-3 h-3 flex-shrink-0" /> {schedule.promoName}
+                </div>
+              )}
               <div className="text-xs text-gray-400">
                 {schedule.scheduleDate} · {fmtTime(schedule.startTime)}–{fmtTime(schedule.endTime)}
               </div>
@@ -564,11 +574,6 @@ function RosterModal({ schedule, bookings, loading, onClose, onZoom }: {
                             <span className="font-mono text-[10px] text-gray-500">
                               {maskCode(b.bookingCode)}
                             </span>
-                            {b.promoId && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-pink-100 text-pink-700 text-[9px] font-semibold">
-                                <Tag className="w-2.5 h-2.5" /> {b.promoName ?? 'Bundle'}
-                              </span>
-                            )}
                           </div>
                           {/* ✅ CHANGED — one ticket per booking (1:1): the
                               guest riding isn't always the visitor account
