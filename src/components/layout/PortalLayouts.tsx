@@ -857,6 +857,14 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
                           </div>
                           <div className="text-[11px] text-gray-500 truncate mt-0.5">{log.details ? formatDetails(log.details) : 'No details'}</div>
                         </div>
+                        {/* ✅ NEW — relative "1d ago" + "View →" link on the
+                            right, matching the admin Logs page's row layout.
+                            Always visible (not hover-only) since this panel
+                            is used on touch devices as much as desktop. */}
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0 pl-2">
+                          <span className="text-[10px] text-gray-400 whitespace-nowrap">{timeAgo(log.createdAt)}</span>
+                          <span className="text-[10px] text-blue-500 font-medium whitespace-nowrap">View →</span>
+                        </div>
                       </div>
                     )
                   })}
