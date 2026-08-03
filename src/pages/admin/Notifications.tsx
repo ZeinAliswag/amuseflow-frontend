@@ -425,6 +425,12 @@ export default function AdminNotificationsPage() {
 
   useEffect(() => { fetchNotifications(); fetchUnreadCount() }, [params, readFilter, dateFrom, dateTo])
 
+  // ✅ FIXED — was window.scrollTo(), which is a no-op here: AdminLayout's
+  // outer shell is h-screen/overflow-hidden, so the actual scrolling
+  // element is the #admin-scroll-area div it renders {children} into, not
+  // the window/document. Scroll THAT container back to top instead.
+  useEffect(() => { document.getElementById('admin-scroll-area')?.scrollTo({ top: 0, behavior: 'smooth' }) }, [params.page])
+
   const fetchUnreadCount = async () => {
     try {
       // ✅ FIXED — was fetching the true system-wide unread count (every

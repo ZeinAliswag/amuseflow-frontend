@@ -844,6 +844,12 @@ export default function AdminPromosPage() {
   useEffect(() => { fetchRides(); fetchSchedules() }, [])
   useEffect(() => { fetchPromos() }, [params, statusFilter, dateFrom, dateTo])
 
+  // ✅ FIXED — was window.scrollTo(), which is a no-op here: AdminLayout's
+  // outer shell is h-screen/overflow-hidden, so the actual scrolling
+  // element is the #admin-scroll-area div it renders {children} into, not
+  // the window/document. Scroll THAT container back to top instead.
+  useEffect(() => { document.getElementById('admin-scroll-area')?.scrollTo({ top: 0, behavior: 'smooth' }) }, [params.page])
+
   const openCreate = () => {
     setEditPromo(null); setForm({ ...emptyForm }); setSavedForm({ ...emptyForm })
     setImageFile(null); setImagePreview(''); setModalOpen(true)

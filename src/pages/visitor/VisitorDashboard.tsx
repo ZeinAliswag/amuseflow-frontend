@@ -1410,6 +1410,9 @@ export function VisitorDashboard() {
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
 
+  // ref used to scroll back to the top of the rides list on page change
+  const ridesSectionRef = useRef<HTMLDivElement>(null)
+
   // ── Rides vs Promos toggle ──────────────────────────────────
   const [viewMode, setViewMode] = useState<'rides' | 'promos'>('rides')
   const [promos, setPromos]       = useState<RidePromo[]>([])
@@ -1457,6 +1460,19 @@ export function VisitorDashboard() {
 
   // ref used to scroll down to the bookings section
   const bookingsSectionRef = useRef<HTMLDivElement>(null)
+
+  // ✅ NEW — pressing a pagination Prev/Next button used to leave the
+  // scroll position wherever it was (usually at the bottom, right on the
+  // pagination controls), so the newly-loaded page's first rows were
+  // scrolled off-screen above. Snap back to the top of the relevant list
+  // whenever its page number changes.
+  useEffect(() => {
+    ridesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [rideParams.page])
+
+  useEffect(() => {
+    bookingsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [bookParams.page])
 
   // booking filters
   const [bookSearch, setBookSearch]   = useState('')
@@ -1764,7 +1780,7 @@ export function VisitorDashboard() {
       </div>
 
       {/* Rides or Schedules */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+      <div ref={ridesSectionRef} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm scroll-mt-6">
         {viewMode === 'rides' ? ( !selectedRide ? (
           // ── Rides list ──────────────────────────────────────
           <>

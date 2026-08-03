@@ -844,7 +844,16 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
                             <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${c.bg} ${c.text} ${c.border}`}>
                               {log.module}
                             </span>
-                            <span className="text-[11px] text-gray-400 font-medium">{timeAgo(log.createdAt)}</span>
+                            {/* ✅ CHANGED — was a relative "5d"/"1w" label,
+                                which is redundant with the date-group header
+                                right above (that already says which day) and
+                                doesn't tell you WHEN that day the action
+                                happened. Shows the actual clock time instead,
+                                matching the row-level time shown on the
+                                admin Logs page. */}
+                            <span className="text-[11px] text-gray-400 font-medium">
+                              {new Date(log.createdAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
                           </div>
                           <div className="text-[11px] text-gray-500 truncate mt-0.5">{log.details ? formatDetails(log.details) : 'No details'}</div>
                         </div>

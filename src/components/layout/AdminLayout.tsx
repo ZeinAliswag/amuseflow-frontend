@@ -240,7 +240,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto">
+        {/* ✅ NEW — id so paginated pages (Rides, Promos, Bookings, Users,
+            Notifications, Logs) can scroll THIS container back to top on
+            page change. window.scrollTo() doesn't work here because the
+            outer app shell is h-screen/overflow-hidden — this div, not the
+            browser window, is what actually scrolls. */}
+        <div id="admin-scroll-area" className="flex-1 overflow-y-auto">
           {children}
         </div>
       </main>

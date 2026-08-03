@@ -578,6 +578,12 @@ export default function AdminLogsPage() {
 
   useEffect(() => { fetchLogs() }, [params, moduleFilter, dateFrom, dateTo])
 
+  // ✅ FIXED — was window.scrollTo(), which is a no-op here: AdminLayout's
+  // outer shell is h-screen/overflow-hidden, so the actual scrolling
+  // element is the #admin-scroll-area div it renders {children} into, not
+  // the window/document. Scroll THAT container back to top instead.
+  useEffect(() => { document.getElementById('admin-scroll-area')?.scrollTo({ top: 0, behavior: 'smooth' }) }, [params.page])
+
   // ✅ FIXED — moduleFilter used to be glued onto the search string
   // (`[params.search, moduleFilter].join(' ')`), which the backend matched
   // with a single LIKE '%...%' across Action/Module/Details/Username. That

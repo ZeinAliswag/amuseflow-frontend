@@ -123,6 +123,11 @@ export interface Schedule {
   maxAgeYears?: number
   minWeightKg?: number
   maxWeightKg?: number
+
+  // ✅ NEW — which Attraction Bundle (if any) this schedule is locked into,
+  // so the admin Schedules calendar can group a bundle's rides together.
+  promoId?: number
+  promoName?: string
 }
 
 // ── Ride Promo ────────────────────────────────────────────────

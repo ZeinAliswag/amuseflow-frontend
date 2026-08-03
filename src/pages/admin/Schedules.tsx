@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import type { FormEvent } from 'react'
-import { Plus, Pencil, Calendar, Clock, Users, CheckCircle2, Trash2, Loader2, X, ChevronDown, Search, ChevronRight, ChevronLeft, UserCog, AlarmClock } from 'lucide-react'
+import { Plus, Pencil, Calendar, Clock, Users, CheckCircle2, Trash2, Loader2, X, ChevronDown, Search, ChevronRight, ChevronLeft, UserCog, AlarmClock, Tag } from 'lucide-react'
 import type { Schedule, Ride, User } from '../../types'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
@@ -214,6 +214,110 @@ function ConfirmModal({ title, message, confirmLabel, danger, onConfirm, onCance
 // ── Day Detail Modal ───────────────────────────────────────────
 const DAY_MODAL_PAGE_SIZE = 3
 
+// ✅ NEW — a day's schedules render as a flat list of "display units":
+// either a standalone schedule, or a bundle group (2+ schedules sharing the
+// same PromoId) collapsed under one "<Bundle name>" header, matching how
+// bundles are grouped everywhere else in the app (Admin Bookings row,
+// Visitor's bundle card) instead of listing each included ride as an
+// unrelated row that happens to carry the same "Attraction Bundle" tag.
+type DayModalUnit =
+  | { kind: 'single'; schedule: Schedule }
+  | { kind: 'bundle'; promoId: number; promoName: string; schedules: Schedule[] }
+
+function groupDaySchedules(list: Schedule[]): DayModalUnit[] {
+  const units: DayModalUnit[] = []
+  const bundleIndex = new Map<number, number>()
+  for (const s of list) {
+    if (s.promoId != null) {
+      const idx = bundleIndex.get(s.promoId)
+      if (idx !== undefined) {
+        const u = units[idx]
+        if (u.kind === 'bundle') u.schedules.push(s)
+      } else {
+        bundleIndex.set(s.promoId, units.length)
+        units.push({ kind: 'bundle', promoId: s.promoId, promoName: s.promoName ?? 'Attraction bundle', schedules: [s] })
+      }
+    } else {
+      units.push({ kind: 'single', schedule: s })
+    }
+  }
+  return units
+}
+
+// ✅ NEW — extracted from what used to be an inline .map() body in
+// DayModal, so the exact same card can be reused both standalone and
+// nested inside a bundle group.
+function ScheduleCard({ s, onEdit, onDelete }: {
+  s: Schedule
+  onEdit: (s: Schedule) => void
+  onDelete: (s: Schedule) => void
+}) {
+  // Locked once the ride is Completed OR the attendant's call
+  // time has already passed — both Edit and Delete respect this.
+  const completed = s.status === 'Completed'
+  const callPassed = isCallTimePassed(s)
+  const locked = completed || callPassed
+  const lockReason = completed
+    ? 'Completed schedules cannot be changed'
+    : callPassed
+    ? 'Call time already passed — cannot be changed'
+    : undefined
+  return (
+    <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 hover:border-gray-200 transition-colors">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="font-semibold text-gray-900 text-sm">{s.rideName}</div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <ScheduleTypeBadge type={s.scheduleType} />
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusColor(s.status)}`}>
+            {s.status}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-4 text-xs text-gray-500 mb-1 flex-wrap">
+        <div className="flex items-center gap-1">
+          <Clock className="w-3.5 h-3.5" />
+          {fmtTime(s.startTime)} – {fmtTime(s.endTime)}
+        </div>
+        <div className="flex items-center gap-1">
+          <Users className="w-3.5 h-3.5" />
+          {s.availableSlots}/{s.maxSlots} slots
+        </div>
+      </div>
+      <CallTimeBadge time={s.callTime} className="text-[11px] mb-2" />
+      {s.attendantName && (
+        <div className="flex items-center gap-1 text-xs text-orange-700 font-medium mb-3">
+          <UserCog className="w-3.5 h-3.5 text-orange-600" />
+          {s.attendantName}
+        </div>
+      )}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          onClick={() => onEdit(s)}
+          disabled={locked}
+          title={lockReason ?? 'Edit'}
+          className={`flex items-center justify-center w-7 h-7 border rounded-lg transition-colors ${
+            locked
+              ? 'bg-gray-50 text-gray-300 border-gray-200 cursor-not-allowed'
+              : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+          }`}>
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => onDelete(s)}
+          disabled={locked}
+          title={lockReason ?? 'Delete'}
+          className={`flex items-center justify-center w-7 h-7 border rounded-lg transition-colors ${
+            locked
+              ? 'bg-gray-50 text-gray-300 border-gray-200 cursor-not-allowed'
+              : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+          }`}>
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function DayModal({ date, schedules, onClose, onEdit, onDelete}: {
   date: Date; schedules: Schedule[]
   onClose: () => void
@@ -230,8 +334,12 @@ function DayModal({ date, schedules, onClose, onEdit, onDelete}: {
     ? schedules.filter(s => s.rideName?.toLowerCase().includes(search.trim().toLowerCase()))
     : schedules
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / DAY_MODAL_PAGE_SIZE))
-  const pageSchedules = filtered.slice((page - 1) * DAY_MODAL_PAGE_SIZE, page * DAY_MODAL_PAGE_SIZE)
+  // ✅ NEW — paginate over grouped UNITS (a bundle counts as one unit, no
+  // matter how many rides it contains) so a bundle group never gets split
+  // across two pages.
+  const units = groupDaySchedules(filtered)
+  const totalPages = Math.max(1, Math.ceil(units.length / DAY_MODAL_PAGE_SIZE))
+  const pageUnits = units.slice((page - 1) * DAY_MODAL_PAGE_SIZE, page * DAY_MODAL_PAGE_SIZE)
 
   const handleSearchChange = (v: string) => {
     setSearch(v)
@@ -283,75 +391,28 @@ function DayModal({ date, schedules, onClose, onEdit, onDelete}: {
                 {schedules.length === 0 ? 'No schedules for this day' : `No attractions matching "${search}"`}
               </div>
             </div>
-          ) : pageSchedules.map(s => {
-            // Locked once the ride is Completed OR the attendant's call
-            // time has already passed — both Edit and Delete respect this.
-            const completed = s.status === 'Completed'
-            const callPassed = isCallTimePassed(s)
-            const locked = completed || callPassed
-            const lockReason = completed
-              ? 'Completed schedules cannot be changed'
-              : callPassed
-              ? 'Call time already passed — cannot be changed'
-              : undefined
-            return (
-            <div key={s.id} className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 hover:border-gray-200 transition-colors">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="font-semibold text-gray-900 text-sm">{s.rideName}</div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <ScheduleTypeBadge type={s.scheduleType} />
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusColor(s.status)}`}>
-                    {s.status}
-                  </span>
+          ) : pageUnits.map(unit => {
+            // ✅ NEW — a bundle unit wraps its rides in one labeled card
+            // instead of listing them as separate, unrelated rows.
+            if (unit.kind === 'bundle') {
+              return (
+                <div key={`bundle-${unit.promoId}`} className="rounded-xl border border-pink-200 bg-pink-50/40 p-3 space-y-2.5">
+                  <div className="flex items-center gap-1.5 px-1">
+                    <Tag className="w-3.5 h-3.5 text-pink-600 flex-shrink-0" />
+                    <span className="text-xs font-bold text-pink-700 truncate">{unit.promoName}</span>
+                    <span className="text-[10px] text-pink-500 flex-shrink-0">· {unit.schedules.length} attractions</span>
+                  </div>
+                  {unit.schedules.map(s => (
+                    <ScheduleCard key={s.id} s={s} onEdit={onEdit} onDelete={onDelete} />
+                  ))}
                 </div>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-gray-500 mb-1 flex-wrap">
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  {fmtTime(s.startTime)} – {fmtTime(s.endTime)}
-                </div>
-                <div className="flex items-center gap-1">
-                  <Users className="w-3.5 h-3.5" />
-                  {s.availableSlots}/{s.maxSlots} slots
-                </div>
-              </div>
-              <CallTimeBadge time={s.callTime} className="text-[11px] mb-2" />
-              {s.attendantName && (
-                <div className="flex items-center gap-1 text-xs text-orange-700 font-medium mb-3">
-                  <UserCog className="w-3.5 h-3.5 text-orange-600" />
-                  {s.attendantName}
-                </div>
-              )}
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => onEdit(s)}
-                disabled={locked}
-                title={lockReason ?? 'Edit'}
-                className={`flex items-center justify-center w-7 h-7 border rounded-lg transition-colors ${
-                  locked
-                    ? 'bg-gray-50 text-gray-300 border-gray-200 cursor-not-allowed'
-                    : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                }`}>
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => onDelete(s)}
-                disabled={locked}
-                title={lockReason ?? 'Delete'}
-                className={`flex items-center justify-center w-7 h-7 border rounded-lg transition-colors ${
-                  locked
-                    ? 'bg-gray-50 text-gray-300 border-gray-200 cursor-not-allowed'
-                    : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
-                }`}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            </div>
-            )
+              )
+            }
+            return <ScheduleCard key={unit.schedule.id} s={unit.schedule} onEdit={onEdit} onDelete={onDelete} />
           })}
         </div>
 
-        {filtered.length > DAY_MODAL_PAGE_SIZE && (
+        {units.length > DAY_MODAL_PAGE_SIZE && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50 flex-shrink-0">
             <span className="text-xs text-gray-500">
               Page <strong>{page}</strong> of <strong>{totalPages}</strong>

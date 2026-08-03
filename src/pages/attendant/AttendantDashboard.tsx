@@ -932,6 +932,13 @@ export function AttendantDashboard() {
   // back to page 1 instead of showing an empty page.
   useEffect(() => { setSchedPage(1) }, [filterMonth, filterYear, statusFilter, dateFrom, dateTo])
 
+  // ✅ NEW — pressing Prev/Next used to leave the scroll position at the
+  // bottom (right on the pagination controls), so the new page's first
+  // rows loaded off-screen above. Snap back to the top of the list.
+  useEffect(() => {
+    schedulesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [schedPage])
+
   // Stat cards at the top always reflect the selected month, regardless of
   // the date-range filter below (which only narrows the schedules list).
   const openCount = monthFilteredSchedules.filter(s => s.status === 'Open').length
