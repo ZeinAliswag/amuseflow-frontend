@@ -1318,9 +1318,17 @@ export function AttendantDashboard() {
                     className="px-5 py-3.5 flex items-center gap-3 hover:bg-gray-50/60 transition-colors group cursor-pointer">
                     <RideThumb path={s.rideImagePath} name={s.rideName} onZoom={setZoomSrc} />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <p className="font-semibold text-gray-900 text-sm truncate">{s.rideName}</p>
                         <ScheduleTypeBadge type={s.scheduleType} />
+                        {/* ✅ NEW — which bundle this ride belongs to, so an
+                            attendant can tell apart e.g. two "Fantasy
+                            Carousel" rows that are both bundle rides but
+                            for different bundles, instead of just knowing
+                            "some bundle" from the badge alone. */}
+                        {s.promoName && (
+                          <span className="text-xs text-pink-600 font-medium truncate">· {s.promoName}</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5 flex-wrap">
                         <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{s.scheduleDate}</span>
