@@ -779,7 +779,11 @@ function MiniActivityPanel({ role, onClose }: { role: 'Visitor' | 'Ride Attendan
             <div>
               <div className="font-bold text-gray-900 text-[14px]">Activity logs</div>
               <div className="text-[11px] text-gray-400">
-                {role === 'Visitor' ? 'Your recent bookings & account activity' : 'Your recent check-ins & account activity'}
+                {/* ✅ CHANGED — Review is a logged module here too (see
+                    ModuleIcon's Star case), but the old copy only mentioned
+                    bookings, so a visitor scanning this subtitle wouldn't
+                    expect to see their own reviews show up in the feed. */}
+                {role === 'Visitor' ? 'Your recent bookings, reviews & account activity' : 'Your recent check-ins & account activity'}
               </div>
             </div>
           </div>
