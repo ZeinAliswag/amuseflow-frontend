@@ -419,19 +419,40 @@ function DateRangeButton({ from, to, onClick }: { from: string; to: string; onCl
   )
 }
 
-function Spinner() {
-  return <div className="w-7 h-7 border-4 border-gray-200 border-t-pink-500 rounded-full animate-spin" />
+// ✅ NEW — skeleton card mirroring the real bundle card's shape (image
+// block, title bar, description lines, date pill, restriction-badge row,
+// action-button row). Shown while paging/filtering instead of a centered
+// spinner, so the grid keeps its shape rather than collapsing.
+function PromoCardSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden animate-pulse">
+      <div className="h-40 bg-gray-200" />
+      <div className="p-4 space-y-2">
+        <div className="h-4 bg-gray-200 rounded w-2/3" />
+        <div className="h-3 bg-gray-100 rounded w-full" />
+        <div className="h-6 bg-gray-100 rounded-lg w-24" />
+        <div className="flex gap-1.5 pt-1">
+          <div className="h-5 bg-gray-100 rounded-full w-16" />
+          <div className="h-5 bg-gray-100 rounded-full w-16" />
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <div className="h-8 w-8 bg-gray-100 rounded-xl" />
+          <div className="h-8 w-8 bg-gray-100 rounded-xl" />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ✅ CHANGED — swapped the small plain amber "Call {time}" text for the same
 // red pill badge used everywhere else in the app (Bookings, My Bookings,
 // Attendant check-in), instead of a bespoke small style just for this page.
-function CallTimeBadge({ time, className = '' }: { time?: string; className?: string }) {
+function CallTimeBadge({ time, className = '', label = 'Call time' }: { time?: string; className?: string; label?: string }) {
   if (!time) return null
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-semibold shadow-sm ${className}`}>
       <AlarmClock className="w-3 h-3" />
-      Call time: {fmtTime(time)}
+      {label}: {fmtTime(time)}
     </span>
   )
 }
@@ -462,7 +483,15 @@ function ScheduleStatusBadge({ status }: { status: string }) {
 // the Schedules page (rounded card, name + status badge row, clock+time,
 // slots, call time pill) instead of cramming every ride into the small
 // promo card on the main grid.
+// ✅ NEW — client-side pagination once a bundle has more than 3 rides, so
+// the modal doesn't turn into one long scroll for big bundles.
+const RIDES_MODAL_PAGE_SIZE = 3
+
 function PromoRidesModal({ promo, onClose }: { promo: RidePromo; onClose: () => void }) {
+  const [page, setPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(promo.rides.length / RIDES_MODAL_PAGE_SIZE))
+  const pageRides = promo.rides.slice((page - 1) * RIDES_MODAL_PAGE_SIZE, page * RIDES_MODAL_PAGE_SIZE)
+
   return (
     <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
@@ -477,7 +506,7 @@ function PromoRidesModal({ promo, onClose }: { promo: RidePromo; onClose: () => 
         </div>
 
         <div className="overflow-y-auto flex-1 p-4 space-y-3">
-          {promo.rides.map(r => (
+          {pageRides.map(r => (
             <div key={r.rideId} className="bg-gray-50 rounded-xl p-3.5 border border-gray-100">
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="font-semibold text-gray-900 text-sm">{r.rideName}</div>
@@ -498,7 +527,22 @@ function PromoRidesModal({ promo, onClose }: { promo: RidePromo; onClose: () => 
           ))}
         </div>
 
-        <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
+        <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-3">
+          {promo.rides.length > RIDES_MODAL_PAGE_SIZE ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">Page {page} of {totalPages}</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors">
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors">
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : <div />}
           <button onClick={onClose} className="px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-medium hover:bg-gray-700 transition-colors">
             Close
           </button>
@@ -987,7 +1031,11 @@ export default function AdminPromosPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center h-64"><Spinner /></div>
+          // ✅ CHANGED — was a centered spinner; now skeleton cards in the
+          // same grid shape, sized to the current page size.
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {Array.from({ length: params.pageSize ?? 8 }).map((_, i) => <PromoCardSkeleton key={i} />)}
+          </div>
         ) : promos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400">
             <Tag className="w-16 h-16 mb-3 text-gray-200" />
@@ -1037,8 +1085,17 @@ export default function AdminPromosPage() {
                   </div>
 
                   <div className="p-4">
-                    <div className="flex items-center gap-1.5 mb-1">
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                       <h3 className="font-bold text-gray-900 text-[14px] truncate">{promo.name}</h3>
+                      {/* ✅ CHANGED — was a "+N more" text link further down the
+                          card; now a clickable "Bundle · N attractions" pill up
+                          here (matches the Visitor card and the admin Bookings
+                          row), doubling as the button that opens the full
+                          rides-list modal. */}
+                      <button type="button" onClick={() => setViewRidesPromo(promo)}
+                        className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-semibold border border-pink-100 flex-shrink-0 hover:bg-pink-100 transition-colors">
+                        Bundle · {promo.rides.length} attractions
+                      </button>
                       {/* ✅ NEW — average rating from every OPTIONAL review left
                           on a completed + paid promo booking (one review per
                           promo booking, not per included ride). */}
@@ -1056,32 +1113,11 @@ export default function AdminPromosPage() {
                       {fmtDate(promo.promoDate)}
                     </div>
 
-                    {/* ✅ CHANGED — only the first ride shows inline now; with
-                        2+ rides, cramming every one into this small card got
-                        cluttered. The rest collapse behind "+N more", which
-                        opens the full list in a modal (styled like the
-                        Schedules page's day-detail cards). */}
-                    <div className="flex flex-col gap-2 mb-3">
-                      {promo.rides.slice(0, 1).map(r => (
-                        <div key={r.rideId}
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 text-gray-700 text-[11px] font-medium border border-gray-100 flex-wrap">
-                          <FerrisWheel className="w-3.5 h-3.5 flex-shrink-0 text-pink-400" />
-                          <span className="flex-1 min-w-[60px]">{r.rideName}</span>
-                          <span className="flex items-center gap-2 flex-shrink-0 text-gray-500">
-                            <CallTimeBadge time={r.callTime} className="text-[11px]" />
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5" /> {fmtTime(r.startTime)}–{fmtTime(r.endTime)}
-                            </span>
-                          </span>
-                        </div>
-                      ))}
-                      {promo.rides.length > 1 && (
-                        <button type="button" onClick={() => setViewRidesPromo(promo)}
-                          className="self-start text-[11px] font-semibold text-pink-600 hover:text-pink-700 hover:underline transition-colors px-1">
-                          +{promo.rides.length - 1} more
-                        </button>
-                      )}
-                    </div>
+                    {/* ✅ CHANGED — removed the inline first-ride preview box;
+                        the "Bundle · N attractions" pill up in the header
+                        already opens the full rides-list modal (name, call
+                        time, and everything else per ride), so this was
+                        duplicate information taking up card space. */}
 
                     {/* ✅ NEW — combined restriction badges across every ride
                         in the bundle, same treatment as the Visitor bundle

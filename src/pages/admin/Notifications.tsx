@@ -14,6 +14,24 @@ const READ_OPTS = [
   { label: 'Read', value: 'true' },
 ]
 
+// ✅ NEW — skeleton card mirroring a real notification card's shape (icon
+// circle, badge row, title/message lines, timestamp). Shown while paging/
+// filtering instead of a centered spinner. No date-group headers here since
+// there's no real data yet to group by.
+function NotificationCardSkeleton() {
+  return (
+    <div className="flex items-start gap-4 rounded-2xl border border-gray-100 bg-gray-50/70 px-5 py-4 animate-pulse">
+      <div className="w-12 h-12 rounded-2xl bg-gray-200 flex-shrink-0" />
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="h-3 bg-gray-200 rounded w-32" />
+        <div className="h-3.5 bg-gray-200 rounded w-1/2" />
+        <div className="h-3 bg-gray-100 rounded w-3/4" />
+      </div>
+      <div className="h-3 bg-gray-100 rounded w-10 flex-shrink-0" />
+    </div>
+  )
+}
+
 // ── Visual identity per notification, based on its title/module — same
 // logic as the header bell's getNotificationVisual, so the module page and
 // the dropdown read consistently. ──
@@ -517,8 +535,10 @@ export default function AdminNotificationsPage() {
 
       {/* Feed — standalone cards on the page background, grouped by day */}
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+        // ✅ CHANGED — was a centered spinner; now skeleton cards matching
+        // the real card shape, sized to the current page size.
+        <div className="space-y-3">
+          {Array.from({ length: params.pageSize ?? 20 }).map((_, i) => <NotificationCardSkeleton key={i} />)}
         </div>
       ) : notifications.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-white border border-dashed border-gray-200 rounded-2xl">

@@ -5,7 +5,7 @@ import {
   Search, Loader2, X, ChevronDown, CalendarDays, Phone,
   FerrisWheel, AlarmClock, BadgePercent
 } from 'lucide-react'
-import type { Booking, PaginationRequest } from '../../types'
+import type { Booking, BookingPromoItem, PaginationRequest } from '../../types'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
 
@@ -41,13 +41,113 @@ const fmtTime = (t?: string) => {
 
 // ── Call time badge — styled like a notification chip (pill background +
 // border) instead of plain colored text, so it actually draws the eye. ──
-function CallTimeBadge({ time, className = '' }: { time?: string; className?: string }) {
+function CallTimeBadge({ time, className = '', label = 'Call time' }: { time?: string; className?: string; label?: string }) {
   if (!time) return null
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-semibold shadow-sm ${className}`}>
       <AlarmClock className="w-3.5 h-3.5" />
-      Call time: {fmtTime(time)}
+      {label}: {fmtTime(time)}
     </span>
+  )
+}
+
+// ✅ NEW — skeleton row mirroring the real booking row's shape (avatar,
+// name/code block, ride/promo info block, price/status block). Shown while
+// paging/filtering instead of a centered spinner, so the list keeps its
+// shape rather than collapsing to a spinner mid-page.
+function BookingRowSkeleton() {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 animate-pulse">
+      <div className="flex items-center gap-3 sm:contents">
+        <div className="w-10 h-10 rounded-xl bg-gray-200 flex-shrink-0" />
+        <div className="flex-1 sm:w-40 sm:flex-shrink-0 space-y-1.5">
+          <div className="h-3.5 bg-gray-200 rounded w-24" />
+          <div className="h-2.5 bg-gray-100 rounded w-16" />
+          <div className="h-5 bg-gray-100 rounded w-28" />
+        </div>
+      </div>
+      <div className="flex-1 space-y-1.5">
+        <div className="h-3.5 bg-gray-200 rounded w-40" />
+        <div className="h-2.5 bg-gray-100 rounded w-32" />
+      </div>
+      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
+        <div className="h-4 bg-gray-200 rounded w-14" />
+        <div className="h-5 bg-gray-100 rounded-full w-16" />
+      </div>
+    </div>
+  )
+}
+
+// ✅ NEW — pressing the "Bundle · N attractions" pill on a bundle booking
+// row opens this modal listing the booking's locked-in included rides,
+// matching the same pill-opens-modal pattern used on Admin Promos.tsx.
+// ✅ NEW — client-side pagination once a bundle has more than 3 rides, so
+// the modal doesn't turn into one long scroll for big bundles.
+const RIDES_MODAL_PAGE_SIZE = 3
+
+function BookingRidesModal({ name, promoDate, rides, onClose }: {
+  name: string; promoDate?: string; rides: BookingPromoItem[]; onClose: () => void
+}) {
+  const [page, setPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(rides.length / RIDES_MODAL_PAGE_SIZE))
+  const pageRides = rides.slice((page - 1) * RIDES_MODAL_PAGE_SIZE, page * RIDES_MODAL_PAGE_SIZE)
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="min-w-0">
+            <div className="font-bold text-gray-900 text-sm truncate">{name}</div>
+            <div className="text-xs text-gray-400">
+              {rides.length} attractions included{promoDate ? ` · ${promoDate.slice(0, 10)}` : ''}
+            </div>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors flex-shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-4 space-y-3">
+          {pageRides.map(r => (
+            <div key={r.rideId} className="bg-gray-50 rounded-xl p-3.5 border border-gray-100">
+              <div className="font-semibold text-gray-900 text-sm mb-2">{r.rideName}</div>
+              <div className="flex items-center gap-4 text-xs text-gray-500 mb-2 flex-wrap">
+                <div className="flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" />
+                  {r.scheduleDate.slice(0, 10)}
+                </div>
+                <div className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  {fmtTime(r.startTime)} – {fmtTime(r.endTime)}
+                </div>
+              </div>
+              <CallTimeBadge time={r.callTime} className="text-[11px]" />
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-3">
+          {rides.length > RIDES_MODAL_PAGE_SIZE ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">Page {page} of {totalPages}</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors">
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors">
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : <div />}
+          <button onClick={onClose} className="px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-medium hover:bg-gray-700 transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -466,6 +566,10 @@ export default function AdminBookingsPage() {
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
 
+  // ✅ NEW — pressing the "Bundle · N attractions" pill on a bundle row
+  // opens a modal listing that booking's locked-in included rides.
+  const [viewBookingRides, setViewBookingRides] = useState<Booking | null>(null)
+
   // confirm modals
   const [approveTarget, setApproveTarget] = useState<Booking | null>(null)
   const [rejectTarget, setRejectTarget]   = useState<Booking | null>(null)
@@ -603,8 +707,11 @@ export default function AdminBookingsPage() {
         <div className="overflow-hidden rounded-b-2xl">
         {/* List */}
         {loading ? (
-          <div className="flex items-center justify-center h-48">
-            <div className="w-8 h-8 border-4 border-gray-200 border-t-emerald-500 rounded-full animate-spin" />
+          // ✅ CHANGED — was a centered spinner; now skeleton rows matching
+          // the real row shape, sized to the current page size, so paging/
+          // filtering doesn't blank the whole list.
+          <div className="divide-y divide-gray-300">
+            {Array.from({ length: params.pageSize ?? 15 }).map((_, i) => <BookingRowSkeleton key={i} />)}
           </div>
         ) : bookings.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
@@ -658,14 +765,24 @@ export default function AdminBookingsPage() {
                       <div className="flex items-center gap-2 mb-0.5">
                         <BadgePercent className="w-3.5 h-3.5 text-pink-500 flex-shrink-0" />
                         <span className="font-medium text-gray-900 text-sm truncate">{b.promoName}</span>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-semibold border border-pink-100 flex-shrink-0">
+                        {/* ✅ CHANGED — was a static badge; now pressable,
+                            opening a modal with the full included-rides list,
+                            matching the same pill-opens-modal pattern used on
+                            Admin Promos.tsx. */}
+                        <button type="button"
+                          onClick={() => setViewBookingRides(b)}
+                          className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-semibold border border-pink-100 flex-shrink-0 hover:bg-pink-100 transition-colors">
                           Bundle · {b.includedRides?.length ?? 0} attractions
-                        </span>
+                        </button>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />{b.includedRides?.[0]?.scheduleDate ?? '—'}
                         </span>
+                        {/* ✅ NEW — IncludedRides is now ordered by CallTime
+                            server-side, so [0] is always the earliest ride
+                            in the bundle. */}
+                        <CallTimeBadge time={b.includedRides?.[0]?.callTime} className="text-[10px] px-2 py-0.5" label="First ride call time" />
                       </div>
                     </>
                   ) : (
@@ -787,6 +904,15 @@ export default function AdminBookingsPage() {
           from={dateFrom} to={dateTo}
           onApply={(f, t) => { setDateFrom(f); setDateTo(t); setParams(p => ({ ...p, page: 1 })) }}
           onClose={() => setDateModalOpen(false)}
+        />
+      )}
+
+      {viewBookingRides && (
+        <BookingRidesModal
+          name={viewBookingRides.promoName ?? 'Bundle'}
+          promoDate={viewBookingRides.includedRides?.[0]?.scheduleDate}
+          rides={viewBookingRides.includedRides ?? []}
+          onClose={() => setViewBookingRides(null)}
         />
       )}
     </div>

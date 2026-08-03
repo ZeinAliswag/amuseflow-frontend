@@ -542,6 +542,23 @@ function groupByDate(logs: ActivityLog[]) {
   return groups
 }
 
+// ✅ NEW — skeleton row mirroring a real log row's shape (module icon dot,
+// badge row, action line, meta line). Shown while paging/filtering instead
+// of a centered spinner. No date-group header here since there's no real
+// data yet to group by.
+function LogRowSkeleton() {
+  return (
+    <div className="flex gap-4 py-3.5 px-4 sm:px-6 animate-pulse">
+      <div className="w-9 h-9 rounded-xl bg-gray-200 flex-shrink-0" />
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="h-3 bg-gray-200 rounded w-40" />
+        <div className="h-3 bg-gray-100 rounded w-56" />
+        <div className="h-2.5 bg-gray-100 rounded w-32" />
+      </div>
+    </div>
+  )
+}
+
 export default function AdminLogsPage() {
   const [logs, setLogs]             = useState<ActivityLog[]>([])
   const [pagination, setPagination] = useState({ currentPage: 1, totalPages: 1, totalCount: 0, pageSize: 20 })
@@ -651,8 +668,10 @@ export default function AdminLogsPage() {
       {/* Feed */}
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+          // ✅ CHANGED — was a centered spinner; now skeleton rows matching
+          // the real row shape, sized to the current page size.
+          <div className="divide-y divide-gray-50">
+            {Array.from({ length: params.pageSize ?? 20 }).map((_, i) => <LogRowSkeleton key={i} />)}
           </div>
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400">

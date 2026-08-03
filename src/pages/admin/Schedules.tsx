@@ -1153,42 +1153,47 @@ export default function AdminSchedulesPage() {
               ))}
             </div>
 
-            {/* Calendar grid */}
-            {loading ? (
-              <div className="flex items-center justify-center h-64">
-                <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
-              </div>
-            ) : (
-              <div className="grid grid-cols-7">
-                {/* Empty cells before first day */}
-                {Array.from({ length: firstDay }).map((_, i) => (
-                  <div key={`empty-${i}`} className="min-h-[130px] border-b border-r border-gray-50 bg-gray-50/50" />
-                ))}
+            {/* Calendar grid — ✅ CHANGED: was a spinner replacing the whole
+                grid while switching months; day numbers/today-highlight/empty
+                cells need no fetch at all (pure date math), so the grid shape
+                now always renders immediately and only the schedule-pill area
+                per day shows a pulsing skeleton while that month's data loads. */}
+            <div className="grid grid-cols-7">
+              {/* Empty cells before first day */}
+              {Array.from({ length: firstDay }).map((_, i) => (
+                <div key={`empty-${i}`} className="min-h-[130px] border-b border-r border-gray-50 bg-gray-50/50" />
+              ))}
 
-                {/* Day cells */}
-                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-                  const daySched = getSchedulesForDay(day)
-                  const cellDate = new Date(calYear, calMonth, day)
-                  const isPast = cellDate < new Date(today.getFullYear(), today.getMonth(), today.getDate())
+              {/* Day cells */}
+              {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                const daySched = getSchedulesForDay(day)
+                const cellDate = new Date(calYear, calMonth, day)
+                const isPast = cellDate < new Date(today.getFullYear(), today.getMonth(), today.getDate())
 
-                  return (
-                    <div key={day}
-                      onClick={() => setDayModal(cellDate)}
-                      className={`min-h-[130px] border-b border-r border-gray-100 p-2 cursor-pointer transition-colors group ${
-                        isToday(day) ? 'bg-blue-50/60' : 'hover:bg-emerald-50/40'
-                      }`}>
-                      {/* Day number */}
-                      <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-semibold mb-1.5 transition-colors ${
-                        isToday(day)
-                          ? 'bg-blue-500 text-white'
-                          : isPast
-                          ? 'text-gray-400 group-hover:bg-gray-100'
-                          : 'text-gray-700 group-hover:bg-emerald-100 group-hover:text-emerald-700'
-                      }`}>
-                        {day}
+                return (
+                  <div key={day}
+                    onClick={() => !loading && setDayModal(cellDate)}
+                    className={`min-h-[130px] border-b border-r border-gray-100 p-2 transition-colors group ${
+                      loading ? 'cursor-default' : 'cursor-pointer'
+                    } ${isToday(day) ? 'bg-blue-50/60' : loading ? '' : 'hover:bg-emerald-50/40'}`}>
+                    {/* Day number */}
+                    <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-semibold mb-1.5 transition-colors ${
+                      isToday(day)
+                        ? 'bg-blue-500 text-white'
+                        : isPast
+                        ? 'text-gray-400 group-hover:bg-gray-100'
+                        : 'text-gray-700 group-hover:bg-emerald-100 group-hover:text-emerald-700'
+                    }`}>
+                      {day}
+                    </div>
+
+                    {/* Schedule pills */}
+                    {loading ? (
+                      <div className="space-y-1 animate-pulse">
+                        <div className="h-5 bg-gray-100 rounded-md" />
+                        <div className="h-5 bg-gray-100 rounded-md w-4/5" />
                       </div>
-
-                      {/* Schedule pills */}
+                    ) : (
                       <div className="space-y-1">
                         {daySched.slice(0, 3).map(s => (
                           <div key={s.id}
@@ -1202,11 +1207,11 @@ export default function AdminSchedulesPage() {
                         )}
 
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
       </div>

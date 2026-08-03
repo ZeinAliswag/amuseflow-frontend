@@ -25,7 +25,6 @@ export default function Login() {
   const [showPw, setShowPw]   = useState(false)
   const [showPw2, setShowPw2] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
 
   const [username, setUsername]   = useState('')
   const [password, setPassword]   = useState('')
@@ -40,8 +39,9 @@ export default function Login() {
   const navigate = useNavigate()
 
   const doLogin = async () => {
-    setError('')
-    if (!username || !password) { setError('Username and password are required.'); return }
+    // ✅ CHANGED — was an inline red banner (setError); now toast, matching
+    // every other form in the app.
+    if (!username || !password) { toast.error('Username and password are required.'); return }
     setLoading(true)
     try {
       const { data } = await api.post('/api/auth/login', { username, password })
@@ -53,12 +53,11 @@ export default function Login() {
       else if (role === 'Ride Attendant') navigate('/attendant')
       else                                navigate('/visitor')
     } catch (e: any) {
-      setError(e.response?.data?.message ?? 'Invalid username or password.')
+      toast.error(e.response?.data?.message ?? 'Invalid username or password.')
     } finally { setLoading(false) }
   }
 
   const doRegister = async () => {
-    setError('')
     if (!firstName || !lastName || !regUser || !regContact || !regPw || !regPw2) { toast.error('All fields are required.'); return }
     const contactDigits = regContact.replace(/\D/g, '')
     if (!/^09\d{9}$/.test(contactDigits)) { toast.error('Enter a valid PH mobile number (e.g. 0912 345 6789).'); return }
@@ -79,7 +78,7 @@ export default function Login() {
       setMode('login')
       setUsername(regUser)
     } catch (e: any) {
-      setError(e.response?.data?.message ?? 'Registration failed.')
+      toast.error(e.response?.data?.message ?? 'Registration failed.')
     } finally { setLoading(false) }
   }
 
@@ -105,12 +104,6 @@ export default function Login() {
               </div>
                 <div className="text-xs text-gray-400">Sign in to your account to continue.</div>
               </div>
-
-              {error && (
-                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs mb-4">
-                  ⚠ {error}
-                </div>
-              )}
 
               <div className="space-y-4">
                 <div>
@@ -160,7 +153,7 @@ export default function Login() {
                 <div className="flex-1 h-px bg-gray-200" />
               </div>
 
-              <button onClick={() => { setMode('register'); setError('') }}
+              <button onClick={() => setMode('register')}
                 className="w-full py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
                 <User className="w-4 h-4" /> Create a visitor account
               </button>
@@ -182,12 +175,6 @@ export default function Login() {
                 </div>
                 <div className="text-xs text-gray-400">Register as a visitor to start booking rides.</div>
               </div>
-
-              {error && (
-                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs mb-4">
-                  ⚠ {error}
-                </div>
-              )}
 
               <div className="space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -277,7 +264,7 @@ export default function Login() {
               <div className="text-xs text-gray-500 text-center mt-4">
                 Already have an account?{' '}
                 <span className="text-rose-600 cursor-pointer font-semibold hover:underline"
-                  onClick={() => { setMode('login'); setError('') }}>Sign in</span>
+                  onClick={() => setMode('login')}>Sign in</span>
               </div>
 
               <div className="text-[11px] text-gray-500 text-center mt-3">

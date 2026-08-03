@@ -123,6 +123,21 @@ function ScheduleTypeBadge({ type, className = '' }: { type?: string; className?
   )
 }
 
+// ✅ NEW — skeleton row mirroring a real assigned-schedule row's shape (ride
+// thumbnail, name/type badge, meta line). Shown while the month's schedules
+// are first loading, instead of a centered spinner.
+function ScheduleRowSkeleton() {
+  return (
+    <div className="px-5 py-3.5 flex items-center gap-3 animate-pulse">
+      <div className="w-11 h-11 rounded-xl bg-gray-200 flex-shrink-0" />
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="h-3.5 bg-gray-200 rounded w-40" />
+        <div className="h-2.5 bg-gray-100 rounded w-56" />
+      </div>
+    </div>
+  )
+}
+
 // ── Month/Year Picker — click-to-open, jump to any month/year ──────
 function MonthYearPicker({ month, year, onChange, accent = 'indigo' }: {
   month: number; year: number
@@ -846,7 +861,11 @@ export function AttendantDashboard() {
   // ── Month + status filters for assigned schedules ──────────────
   const [filterMonth, setFilterMonth] = useState(now.getMonth())
   const [filterYear, setFilterYear]   = useState(now.getFullYear())
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Open' | 'Full' | 'Completed' | 'Cancelled'>('All')
+  // ✅ CHANGED — was 'All', which buried the handful of schedules an
+  // attendant actually needs to act on under a whole month of Completed/
+  // Cancelled history. "Open" (what's actually upcoming/actionable) is the
+  // more useful default; the other tabs are still one click away.
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Open' | 'Full' | 'Completed' | 'Cancelled'>('Open')
 
   // ── Date-range filter (independent of the month picker above) — narrows
   // the assigned-schedules list to an exact date range, same "Filter by
@@ -867,9 +886,36 @@ export function AttendantDashboard() {
     return (!dateFrom || s.scheduleDate >= dateFrom) && (!dateTo || s.scheduleDate <= dateTo)
   }) : monthFilteredSchedules
 
-  const displaySchedules = statusFilter === 'All'
+  const statusFilteredSchedules = statusFilter === 'All'
     ? dateRangeFilteredSchedules
     : dateRangeFilteredSchedules.filter(s => s.status === statusFilter)
+
+  // ✅ CHANGED — "this week" priority now specifically means TODAY onward
+  // through this Sunday, not the whole Mon–Sun week. A day earlier this
+  // week that's already passed shouldn't outrank today just because it's
+  // technically "this week" — today comes first, then tomorrow, then the
+  // rest of this week's upcoming days, THEN everything further out. Within
+  // each of those two buckets, rows still sort chronologically (soonest
+  // call time first) rather than however the API happened to return them.
+  const todayStart = new Date(now)
+  todayStart.setHours(0, 0, 0, 0)
+  const weekEnd = new Date(todayStart)
+  weekEnd.setDate(todayStart.getDate() + (now.getDay() === 0 ? 0 : 7 - now.getDay())) // this Sunday
+  weekEnd.setHours(23, 59, 59, 999)
+  const isTodayOrRestOfWeek = (dateStr?: string) => {
+    if (!dateStr) return false
+    const d = new Date(dateStr)
+    return d >= todayStart && d <= weekEnd
+  }
+
+  const displaySchedules = [...statusFilteredSchedules].sort((a, b) => {
+    const aThisWeek = isTodayOrRestOfWeek(a.scheduleDate) ? 0 : 1
+    const bThisWeek = isTodayOrRestOfWeek(b.scheduleDate) ? 0 : 1
+    if (aThisWeek !== bThisWeek) return aThisWeek - bThisWeek
+    const aKey = `${a.scheduleDate ?? ''}T${a.callTime ?? a.startTime ?? '00:00'}`
+    const bKey = `${b.scheduleDate ?? ''}T${b.callTime ?? b.startTime ?? '00:00'}`
+    return aKey.localeCompare(bKey)
+  })
 
   // ✅ NEW — assigned-schedules pagination. Previously the whole filtered
   // list rendered in one long scroll (could easily be 50+ rows for a busy
@@ -1245,8 +1291,10 @@ export function AttendantDashboard() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center h-40">
-              <div className="w-8 h-8 border-4 border-gray-200 border-t-amber-500 rounded-full animate-spin" />
+            // ✅ CHANGED — was a centered spinner; now skeleton rows matching
+            // the real row shape, sized to one page's worth of rows.
+            <div className="divide-y divide-gray-50">
+              {Array.from({ length: SCHED_PAGE_SIZE }).map((_, i) => <ScheduleRowSkeleton key={i} />)}
             </div>
           ) : displaySchedules.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-14 text-gray-400">

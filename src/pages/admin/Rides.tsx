@@ -15,8 +15,31 @@ import toast from 'react-hot-toast'
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
 const fmt = (n: any) => Number(n ?? 0).toFixed(2)
 
-function Spinner() {
-  return <div className="w-7 h-7 border-4 border-gray-200 border-t-green-500 rounded-full animate-spin" />
+// ✅ CHANGED — the old Spinner() component was only ever used for this grid's
+// loading state, now replaced by RideCardSkeleton below, so it's removed
+// rather than left as dead code.
+//
+// ✅ NEW — skeleton card mirroring the real card's shape (image block, title
+// bar, description lines, meta row, badge pills, button bar). Used instead
+// of a spinner when paging/sorting/filtering an already-visible grid, so the
+// layout doesn't collapse to a single centered spinner — the grid keeps its
+// shape and just "loads in", which reads as faster and avoids layout shift.
+function RideCardSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden animate-pulse">
+      <div className="h-44 bg-gray-200" />
+      <div className="p-4 space-y-2">
+        <div className="h-4 bg-gray-200 rounded w-2/3" />
+        <div className="h-3 bg-gray-100 rounded w-full" />
+        <div className="h-3 bg-gray-100 rounded w-4/5" />
+        <div className="flex gap-2 pt-1">
+          <div className="h-5 bg-gray-100 rounded-full w-16" />
+          <div className="h-5 bg-gray-100 rounded-full w-16" />
+        </div>
+        <div className="h-9 bg-gray-200 rounded-xl mt-2" />
+      </div>
+    </div>
+  )
 }
 
 function Badge({ label }: { label: string }) {
@@ -493,7 +516,13 @@ export default function AdminRidesPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center h-64"><Spinner /></div>
+          // ✅ CHANGED — was a centered spinner that blanked the whole grid;
+          // now skeleton cards in the same grid shape, sized to the current
+          // page size, so paging/sorting/filtering feels instant instead of
+          // a jarring "everything disappears then reappears" flash.
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {Array.from({ length: params.pageSize ?? 10 }).map((_, i) => <RideCardSkeleton key={i} />)}
+          </div>
         ) : rides.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400">
             <FerrisWheel className="w-16 h-16 mb-3 text-gray-200" />

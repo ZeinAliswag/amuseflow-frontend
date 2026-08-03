@@ -32,6 +32,23 @@ const STATUS_FILTER_OPTS = [
   { label: 'Deactivated', value: 'inactive' },
 ]
 
+// ✅ NEW — skeleton row mirroring the real user row's shape (avatar, name/
+// role/status badges, meta line). Shown while paging/filtering instead of a
+// centered spinner.
+function UserRowSkeleton() {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 animate-pulse">
+      <div className="flex items-center gap-3 sm:contents">
+        <div className="w-12 h-12 rounded-2xl bg-gray-200 flex-shrink-0" />
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <div className="h-3.5 bg-gray-200 rounded w-32" />
+          <div className="h-2.5 bg-gray-100 rounded w-40" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const roleDot = (role: string) => {
   if (role === 'Admin')          return 'bg-blue-500'
   if (role === 'Ride Attendant') return 'bg-amber-500'
@@ -462,8 +479,10 @@ export default function AdminUsersPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center h-48">
-            <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+          // ✅ CHANGED — was a centered spinner; now skeleton rows matching
+          // the real row shape, sized to the current page size.
+          <div className="divide-y divide-gray-300">
+            {Array.from({ length: params.pageSize ?? 10 }).map((_, i) => <UserRowSkeleton key={i} />)}
           </div>
         ) : users.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
