@@ -84,8 +84,8 @@ const toISO = (d: Date) => {
   const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0')
   return `${y}-${m}-${day}`
 }
-const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
-const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric' })
+const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
 // ✅ CHANGED — a same-year range only needs the year once, at the end
 // ("Jan 9 – Jan 10, 1974"); a range spanning two different years needs it on
 // both ends ("Jan 9, 1974 – Jan 10, 1978") so it isn't ambiguous.

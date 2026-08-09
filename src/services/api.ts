@@ -172,3 +172,18 @@ export const settingsApi = {
   updateRideValidation: (payload: Record<string, number>) =>
     api.put('/api/ridevalidationsettings', payload),
 }
+
+// ── Reports (admin-only rating analytics) ────────────────────────
+// Backs the Admin "Reports" page — monthly average-rating trend, scoped to
+// every Attraction, every Attraction Bundle, everything combined, or one
+// specific Attraction/Bundle, plus a per-entity breakdown table.
+// ✅ CHANGED — the report period is now an explicit picked date range
+// (fromDate/toDate, 'YYYY-MM-DD') instead of a trailing-months count.
+// Both are optional: omit them and the backend defaults to "this month".
+export const reportApi = {
+  getRatingTrend: (params: { scope: 'Ride' | 'Promo' | 'All'; id?: number; fromDate?: string; toDate?: string }) =>
+    api.get('/api/reports/ratings/trend', { params }),
+
+  getRatingBreakdown: (params: { fromDate?: string; toDate?: string }) =>
+    api.get('/api/reports/ratings/breakdown', { params }),
+}

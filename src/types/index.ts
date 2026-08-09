@@ -347,6 +347,41 @@ export interface RideValidationSettings {
   updatedByAdminId?: number
 }
 
+// ── Reports (admin-only rating analytics) ───────────────────────
+// One calendar month's worth of average-rating data. Months with no
+// reviews are still included (zero-filled by the backend) so the trend
+// chart never has gaps.
+export interface RatingTrendPoint {
+  year: number
+  month: number        // 1-12
+  monthLabel: string    // e.g. "Jan 2026"
+  averageRating: number
+  reviewCount: number
+}
+
+export interface RatingTrend {
+  scope: 'Ride' | 'Promo' | 'All'
+  subjectId?: number
+  scopeLabel: string    // e.g. "All Attractions", "Sky Coaster"
+  overallAverage: number
+  overallReviewCount: number
+  points: RatingTrendPoint[]
+}
+
+// One row in the Reports breakdown table — a single Attraction or
+// Attraction Bundle's average rating within the report's date range.
+export interface EntityRating {
+  id: number
+  name: string
+  type: 'Attraction' | 'Attraction Bundle'
+  imagePath?: string
+  // ✅ NEW — when this Attraction/Bundle was created, backing the Reports
+  // breakdown table's "Date" sort option.
+  createdAt: string
+  averageRating: number
+  reviewCount: number
+}
+
 // ── Dashboard ─────────────────────────────────────────────────
 export interface AdminDashboard {
   totalRides: number

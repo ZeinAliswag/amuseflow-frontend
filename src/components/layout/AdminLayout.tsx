@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Ticket, Users, ClipboardList,
   Calendar, LogOut, ChevronDown, Menu, X,
   FerrisWheel, Loader2, BadgePercent, Bell,
-  UserCog, Wrench, WandSparkles
+  UserCog, Wrench, WandSparkles, BarChart3
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import api from '../../services/api'
@@ -57,6 +57,7 @@ const navItems: NavEntry[] = [
   { to: '/admin/schedules', icon: <Calendar className="w-5 h-5" />,        label: 'Schedules' },
   { to: '/admin/bookings',  icon: <Ticket className="w-5 h-5" />,          label: 'Bookings' },
   { to: '/admin/notifications', icon: <Bell className="w-5 h-5" />,       label: 'Notifications' },
+  { to: '/admin/reports',   icon: <BarChart3 className="w-5 h-5" />,       label: 'Reports' },
   {
     label: 'Administration',
     icon: <UserCog className="w-5 h-5" />,

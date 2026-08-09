@@ -44,3 +44,29 @@
   .pag-btn       { @apply flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-lg border border-gray-200 bg-white cursor-pointer text-[11px] font-medium text-gray-700 transition-all hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed; }
   .pag-btn.active { @apply bg-brand-500 text-white border-brand-500; }
 }
+
+/* ✅ NEW — "print only this element" pattern used by the admin Reports
+   page's printable letterhead report (.af-printable). Everything else on
+   the page (sidebar, header, filter controls, on-screen cards) gets
+   visibility:hidden; only .af-printable and its descendants are switched
+   back to visible, then repositioned to the top of the page. This works
+   regardless of where .af-printable sits in the DOM tree, so it doesn't
+   need any changes to AdminLayout itself.
+   AdminLayout's outer shell is intentionally h-screen/overflow-hidden (see
+   AdminLayout.tsx) so its own scroll container can manage scrolling — that
+   same clipping would truncate a multi-page printed report to one screen's
+   height, so it's forced back to normal document flow here for print only. */
+@media print {
+  html, body { height: auto !important; overflow: visible !important; }
+  #root, #root * { overflow: visible !important; height: auto !important; }
+
+  body * { visibility: hidden; }
+  .af-printable, .af-printable * { visibility: visible; }
+  .af-printable {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}

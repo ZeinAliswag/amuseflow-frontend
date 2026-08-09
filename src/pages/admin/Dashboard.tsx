@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { SVGProps as ReactSVGProps } from 'react'
-import type { AdminDashboard, Booking } from '../../types'
+import { Link } from 'react-router-dom'
+import type { AdminDashboard, Booking, RatingTrend } from '../../types'
 import { useAuth } from '../../hooks/useAuth'
-import api from '../../services/api'
+import api, { reportApi } from '../../services/api'
 import toast from 'react-hot-toast'
 
 // ✅ FIXED — was `JSX.IntrinsicElements['svg']`, relying on the bare
@@ -147,6 +148,49 @@ function BadgePercent(props: SVGProps) {
       <circle cx="7.5" cy="7.5" r="1.5" />
       <circle cx="16.5" cy="16.5" r="1.5" />
       <path d="M7.5 16.5l9-9" />
+    </svg>
+  )
+}
+
+function Star(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 2.5l2.9 6.1 6.6.7-4.9 4.5 1.3 6.6L12 17l-5.9 3.4 1.3-6.6-4.9-4.5 6.6-.7z" />
+    </svg>
+  )
+}
+
+function ChevronRightSmall(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  )
+}
+
+// ── Mini sparkline — a compact, dashboard-card-sized version of the same
+// monthly rating trend the full Reports page charts, just without axes/
+// labels/gridlines. Kept local to this file rather than importing from
+// Reports.tsx, matching this codebase's existing pattern of small
+// presentational helpers living alongside the page that uses them. ──
+function RatingSparkline({ points }: { points: { averageRating: number; reviewCount: number }[] }) {
+  const W = 240, H = 56, pad = 4
+  const n = points.length
+  if (n === 0) return <div className="text-xs text-gray-300">No rating data yet</div>
+
+  const xFor = (i: number) => pad + (n <= 1 ? (W - pad * 2) / 2 : ((W - pad * 2) * i) / (n - 1))
+  const yFor = (v: number) => pad + (H - pad * 2) - (Math.max(0, Math.min(5, v)) / 5) * (H - pad * 2)
+  const d = points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xFor(i).toFixed(1)} ${yFor(p.averageRating).toFixed(1)}`)
+    .join(' ')
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-14" role="img" aria-label="Average rating trend, last 6 months">
+      <path d={d} fill="none" stroke="#f59e0b" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      {points.map((p, i) => (
+        <circle key={i} cx={xFor(i)} cy={yFor(p.averageRating)} r={p.reviewCount > 0 ? 2.5 : 1.5}
+          fill={p.reviewCount > 0 ? '#f59e0b' : '#e5e7eb'} />
+      ))}
     </svg>
   )
 }
@@ -324,6 +368,12 @@ export default function AdminDashboardPage() {
   const [stats, setStats]     = useState<AdminDashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [allBookings, setAllBookings] = useState<any[]>([])
+  // ✅ NEW — average rating trend (all Attractions & Bundles combined, last
+  // 6 months), backing the "Attraction & bundle ratings" widget below.
+  // Loaded separately from `loading` so a slow ratings query never blocks
+  // the rest of the dashboard from rendering.
+  const [ratingTrend, setRatingTrend] = useState<RatingTrend | null>(null)
+  const [ratingLoading, setRatingLoading] = useState(true)
 
   const now0 = new Date()
   const [filterMonth, setFilterMonth] = useState(now0.getMonth())
@@ -344,7 +394,23 @@ export default function AdminDashboardPage() {
     finally { setLoading(false) }
   }
 
+  const fetchRatingTrend = async () => {
+    setRatingLoading(true)
+    try {
+      // ✅ CHANGED — reportApi now takes an explicit fromDate/toDate range
+      // instead of a trailing-months count. Widget still shows the last 6
+      // months: 1st of the month 5 months ago, through today.
+      const today = new Date()
+      const from = new Date(today.getFullYear(), today.getMonth() - 5, 1)
+      const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      const res = await reportApi.getRatingTrend({ scope: 'All', fromDate: toISO(from), toDate: toISO(today) })
+      setRatingTrend(res.data?.data ?? null)
+    } catch { /* non-critical widget — fail quietly, rest of dashboard still works */ }
+    finally { setRatingLoading(false) }
+  }
+
   useEffect(() => { fetchAll() }, [])
+  useEffect(() => { fetchRatingTrend() }, [])
 
   const pending = stats?.recentPendingBookings ?? []
 
@@ -444,6 +510,40 @@ export default function AdminDashboardPage() {
         <MiniCard label="Rejected"  value={monthlyRejected}  icon={<XCircle className="w-4 h-4" />}      color="red"    />
         <MiniCard label="Completed" value={monthlyCompleted} icon={<TrendingUp className="w-4 h-4" />}   color="blue"   />
         <MiniCard label="Cancelled" value={monthlyCancelled} icon={<BarChart3 className="w-4 h-4" />}    color="purple" />
+      </div>
+
+      {/* Attraction & bundle ratings — quick summary, full breakdown lives on the Reports page */}
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+              <Star className="w-5 h-5 text-amber-500" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-gray-900">Attraction &amp; bundle ratings</div>
+              <div className="text-xs text-gray-400">Average visitor rating, last 6 months</div>
+            </div>
+          </div>
+          <Link to="/admin/reports"
+            className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+            View full report <ChevronRightSmall className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+        <div className="px-5 py-4 flex items-center gap-6 flex-wrap">
+          {ratingLoading ? (
+            <div className="flex items-center justify-center h-14 w-full"><Loader2 className="w-5 h-5 text-gray-300" /></div>
+          ) : (
+            <>
+              <div className="flex-shrink-0">
+                <div className="text-3xl font-bold text-gray-900">{(ratingTrend?.overallAverage ?? 0).toFixed(2)}</div>
+                <div className="text-xs text-gray-400">{ratingTrend?.overallReviewCount ?? 0} review{(ratingTrend?.overallReviewCount ?? 0) === 1 ? '' : 's'}</div>
+              </div>
+              <div className="flex-1 min-w-[160px]">
+                <RatingSparkline points={ratingTrend?.points ?? []} />
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Pending approvals */}

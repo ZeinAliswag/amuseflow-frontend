@@ -21,8 +21,8 @@ const toISO = (d: Date) => {
 // ✅ CHANGED — added year so a filtered date range in a different year (e.g.
 // picking a past/future year in the calendar) doesn't render ambiguously as
 // just "Jan 9 – Jan 10" with no indication of which year.
-const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
-const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric' })
+const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
 // ✅ CHANGED — a same-year range only needs the year once, at the end
 // ("Jan 9 – Jan 10, 1974"); a range spanning two different years needs it on
 // both ends ("Jan 9, 1974 – Jan 10, 1978") so it isn't ambiguous.
