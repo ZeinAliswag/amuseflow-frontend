@@ -588,6 +588,15 @@ export default function AdminLogsPage() {
   useEffect(() => {
     const el = document.getElementById('admin-scroll-area')
     if (el) el.scrollTop = 0
+    // ✅ FIXED (again, mobile) — on some mobile browsers 100vh includes
+    // space the address bar temporarily covers, so the OUTER app shell can
+    // still end up scrollable even though it's meant to be h-screen/
+    // overflow-hidden. Resetting only #admin-scroll-area left that outer
+    // scroll position untouched on those devices. Belt-and-suspenders: also
+    // reset the window/document scroll position.
+    window.scrollTo(0, 0)
+    document.documentElement.scrollTop = 0
+    document.body.scrollTop = 0
   }, [params.page])
 
   // ✅ FIXED — moduleFilter used to be glued onto the search string

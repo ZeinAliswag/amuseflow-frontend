@@ -1007,7 +1007,19 @@ function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl w-96 max-h-[75vh] flex flex-col z-50 overflow-hidden">
+          {/* ✅ FIXED — mobile responsiveness: this used to be a fixed
+              w-96 (384px) panel anchored via `absolute right-0` to the
+              bell button. The bell isn't flush against the true right
+              edge of the screen (the avatar/menu sits further right), so
+              on phone-width viewports the 384px panel ran off the LEFT
+              edge of the screen, cutting off most of its own content.
+              Below `sm`, it now escapes the bell's anchor entirely and
+              becomes a `fixed` panel pinned to the viewport with equal
+              side margins (inset-x-3) under the header (top-16 matches
+              the header's h-16), so it can never overflow regardless of
+              where the bell sits. At `sm` and up there's enough room, so
+              it reverts to the original anchored w-96 dropdown. */}
+          <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl w-auto sm:w-96 max-h-[70vh] sm:max-h-[75vh] flex flex-col z-50 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-100 flex-shrink-0 bg-gray-50/60">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-bold text-gray-900">Notifications</p>

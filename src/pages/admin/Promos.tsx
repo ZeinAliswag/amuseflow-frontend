@@ -854,6 +854,10 @@ export default function AdminPromosPage() {
   useEffect(() => {
     const el = document.getElementById('admin-scroll-area')
     if (el) el.scrollTop = 0
+    // ✅ FIXED (again, mobile) — see Logs.tsx for the full explanation.
+    window.scrollTo(0, 0)
+    document.documentElement.scrollTop = 0
+    document.body.scrollTop = 0
   }, [params.page])
 
   const openCreate = () => {
@@ -907,9 +911,28 @@ export default function AdminPromosPage() {
     })
   }
 
+  // ✅ NEW — same client-side size/type guard as Admin Rides.tsx, mirroring
+  // the backend's 10MB limit and allowed types (adds HEIC/HEIF).
+  const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+  const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif']
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    if (!ALLOWED_IMAGE_EXTENSIONS.includes(extension)) {
+      toast.error('Only JPG, PNG, WEBP, GIF, and HEIC/HEIF images are allowed.')
+      e.target.value = ''
+      return
+    }
+
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error('Photo must be under 10MB.')
+      e.target.value = ''
+      return
+    }
+
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
   }
@@ -1285,9 +1308,9 @@ export default function AdminPromosPage() {
                     <label className="cursor-pointer flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 font-medium transition-colors">
                       <Upload className="w-4 h-4" />
                       {editPromo ? 'Change photo (optional)' : 'Upload photo'}
-                      <input ref={fileRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                      <input ref={fileRef} type="file" accept="image/*,.heic,.heif" onChange={handleImageChange} className="hidden" />
                     </label>
-                    <p className="text-xs text-gray-400 mt-1.5">JPG, PNG, WEBP · Max 5MB</p>
+                    <p className="text-xs text-gray-400 mt-1.5">JPG, PNG, WEBP, HEIC/HEIF · Max 10MB</p>
                   </div>
                 </div>
               </div>

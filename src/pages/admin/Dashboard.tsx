@@ -1,18 +1,154 @@
 import { useEffect, useState } from 'react'
-import {
- Ticket, Users, Calendar, CheckCircle2,
-  XCircle, BarChart3, Clock, TrendingUp, AlertCircle, ChevronLeft, ChevronRight, Loader2,
-  FerrisWheel, BadgePercent
-} from 'lucide-react'
+import type { SVGProps as ReactSVGProps } from 'react'
 import type { AdminDashboard, Booking } from '../../types'
 import { useAuth } from '../../hooks/useAuth'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
 
+// ✅ FIXED — was `JSX.IntrinsicElements['svg']`, relying on the bare
+// global `JSX` namespace. React 19's own type definitions moved that
+// namespace under `React.JSX`, so the bare global lookup no longer
+// resolves and fails with "Cannot find namespace 'JSX'". React's types
+// package already exports an `SVGProps` generic that covers the same
+// shape, so this uses that directly instead.
+type SVGProps = ReactSVGProps<SVGSVGElement>
+
 const fmt = (n: any) => Number(n ?? 0).toFixed(2)
 
 function Spinner() {
   return <div className="w-8 h-8 border-4 border-gray-200 border-t-emerald-500 rounded-full animate-spin" />
+}
+
+function Ticket(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 7h18M3 17h18" />
+      <path d="M7 7v10" />
+      <path d="M17 7v10" />
+      <path d="M3 10.5c1 0 1-1 1-1s-1-1-1-1" />
+      <path d="M21 10.5c-1 0-1-1-1-1s1-1 1-1" />
+    </svg>
+  )
+}
+
+function Users(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="8" cy="8" r="3" />
+      <circle cx="17" cy="7" r="2" />
+      <path d="M3 21c0-3 3-5 5-5h2c2 0 5 2 5 5" />
+      <path d="M14 18c1.5-1.5 4-1.5 5 0" />
+    </svg>
+  )
+}
+
+function Calendar(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M16 3v4M8 3v4M3 11h18" />
+    </svg>
+  )
+}
+
+function CheckCircle2(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  )
+}
+
+function XCircle(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M15 9l-6 6M9 9l6 6" />
+    </svg>
+  )
+}
+
+function BarChart3(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="4" y="12" width="4" height="8" rx="1" />
+      <rect x="10" y="8" width="4" height="12" rx="1" />
+      <rect x="16" y="4" width="4" height="16" rx="1" />
+    </svg>
+  )
+}
+
+function Clock(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </svg>
+  )
+}
+
+function TrendingUp(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 17l6-6 4 4 8-8" />
+      <path d="M21 9v6h-6" />
+    </svg>
+  )
+}
+
+function AlertCircle(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8v4" />
+      <path d="M12 16h.01" />
+    </svg>
+  )
+}
+
+function ChevronLeft(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  )
+}
+
+function ChevronRight(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  )
+}
+
+function Loader2(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin" {...props}>
+      <circle cx="12" cy="12" r="9" strokeOpacity="0.25" />
+      <path d="M21 12a9 9 0 0 0-9-9" />
+    </svg>
+  )
+}
+
+function FerrisWheel(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="6" />
+      <path d="M12 6v-4M12 18v4M6 12h-4M18 12h4M16.5 7.5l2.5-2.5M5.5 18.5l-2.5 2.5M7.5 16.5l-2.5 2.5M18.5 5.5l2.5-2.5" />
+    </svg>
+  )
+}
+
+function BadgePercent(props: SVGProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="7.5" cy="7.5" r="1.5" />
+      <circle cx="16.5" cy="16.5" r="1.5" />
+      <path d="M7.5 16.5l9-9" />
+    </svg>
+  )
 }
 
 // ── Enhanced StatCard ────────────────────────────────────────

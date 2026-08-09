@@ -234,14 +234,17 @@ export default function AdminUsersPage() {
   useEffect(() => {
     const el = document.getElementById('admin-scroll-area')
     if (el) el.scrollTop = 0
+    // ✅ FIXED (again, mobile) — see Logs.tsx for the full explanation.
+    window.scrollTo(0, 0)
+    document.documentElement.scrollTop = 0
+    document.body.scrollTop = 0
   }, [params.page])
 
   const fetchUsers = async () => {
     setLoading(true)
     try {
-      const searchParts = [params.search, roleFilter].filter(Boolean)
       const res = await api.get<PagedResponse<User>>('/api/user', {
-        params: { ...params, search: searchParts.join(' ') || undefined }
+        params: { ...params, role: roleFilter || undefined }
       })
       let data: User[] = res.data.data ?? []
       if (statusFilter === 'active')   data = data.filter(u => u.isActive)

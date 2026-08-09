@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  ChevronDown, Save, Loader2, FerrisWheel,
+  ChevronDown, Save, Loader2, FerrisWheel, RotateCcw,
   ArrowDownToLine, ArrowUpToLine, Minus, Plus
 } from 'lucide-react'
 import type { RideValidationSettings } from '../../types'
@@ -555,21 +555,40 @@ export default function AdminSettingsPage() {
 
             </div>
 
-            <button
-              onClick={handleSave}
-              disabled={saving || !hasChanges}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
+            <div className="flex items-center gap-2">
 
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
+              {/* ✅ NEW — only shows once the form has unsaved edits,
+                  letting the admin discard them and go back to the last
+                  saved values without refreshing the page. */}
+              {hasChanges && (
+                <button
+                  type="button"
+                  onClick={() => setForm(savedForm)}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-600 hover:bg-gray-50 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Undo changes
+                </button>
               )}
 
-              Save changes
+              <button
+                onClick={handleSave}
+                disabled={saving || !hasChanges}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
 
-            </button>
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+
+                Save changes
+
+              </button>
+
+            </div>
 
           </div>
 

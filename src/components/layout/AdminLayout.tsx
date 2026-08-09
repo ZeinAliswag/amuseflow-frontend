@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Ticket, Users, ClipboardList,
   Calendar, LogOut, ChevronDown, Menu, X,
-  FerrisWheel, Loader2, BadgePercent, Bell, Settings
+  FerrisWheel, Loader2, BadgePercent, Bell,
+  UserCog, Wrench, WandSparkles
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import api from '../../services/api'
@@ -16,16 +17,55 @@ interface NavItem {
   label: string
 }
 
-const navItems: NavItem[] = [
-  { to: '/admin',           icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
-  { to: '/admin/rides',     icon: <FerrisWheel className="w-5 h-5" />,           label: 'Attractions' },
-  { to: '/admin/promos',    icon: <BadgePercent className="w-5 h-5" />,    label: 'Attraction Bundles' },
+// ✅ NEW — sidebar nav can now group related items under one collapsible
+// section (accordion), instead of every item sitting flat at the top
+// level. Grouping is deliberately conservative: only items an admin
+// checks constantly (Schedules, Bookings, Notifications) stay flat at
+// one click away, while pages that are conceptually one module
+// ("Attractions" + "Attraction Bundles") or are lower-frequency/
+// account-and-config pages ("Users", "Activity Logs", "Settings" —
+// "Administration") get folded into a group instead of crowding the
+// top level.
+//
+// Each group has its own fixed icon (distinct from any of its own
+// children's icons), and the child that used to share the group's exact
+// label+icon ("Attractions" the group vs. "Attractions" the page) is
+// now named "All Attractions" with its own catalog-style icon, reading
+// as the counterpart to "Attraction Bundles" instead of a duplicate.
+interface NavGroup {
+  label: string
+  icon: ReactNode
+  children: NavItem[]
+}
+
+type NavEntry = NavItem | NavGroup
+
+function isNavGroup(entry: NavEntry): entry is NavGroup {
+  return 'children' in entry
+}
+
+const navItems: NavEntry[] = [
+  { to: '/admin', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
+  {
+    label: 'Attractions',
+    icon: <WandSparkles className="w-5 h-5" />,
+    children: [
+      { to: '/admin/rides',  icon: <FerrisWheel className="w-4 h-4" />,  label: 'All Attractions' },
+      { to: '/admin/promos', icon: <BadgePercent className="w-4 h-4" />, label: 'Attraction Bundles' },
+    ],
+  },
   { to: '/admin/schedules', icon: <Calendar className="w-5 h-5" />,        label: 'Schedules' },
   { to: '/admin/bookings',  icon: <Ticket className="w-5 h-5" />,          label: 'Bookings' },
   { to: '/admin/notifications', icon: <Bell className="w-5 h-5" />,       label: 'Notifications' },
-  { to: '/admin/users',     icon: <Users className="w-5 h-5" />,           label: 'Users' },
-  { to: '/admin/logs',      icon: <ClipboardList className="w-5 h-5" />,   label: 'Activity Logs' },
-  { to: '/admin/settings',  icon: <Settings className="w-5 h-5" />,        label: 'Settings' },
+  {
+    label: 'Administration',
+    icon: <UserCog className="w-5 h-5" />,
+    children: [
+      { to: '/admin/users',    icon: <Users className="w-4 h-4" />,         label: 'Users' },
+      { to: '/admin/logs',     icon: <ClipboardList className="w-4 h-4" />, label: 'Activity Logs' },
+      { to: '/admin/settings', icon: <Wrench className="w-4 h-4" />,        label: 'Settings' },
+    ],
+  },
 ]
 
 // How often to re-check the unread bookings count, in milliseconds.
@@ -62,8 +102,16 @@ function LogoutConfirmModal({ loading, onConfirm, onCancel }: {
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+
+  // ✅ NEW — accordion open/closed state per nav group, keyed by label.
+  // `undefined` (not yet touched by the admin) falls back to
+  // auto-expanded whenever the current route is inside that group, so
+  // landing on /admin/promos directly still opens "Attractions" without
+  // the admin having to click it first.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   // ✅ CHANGED — this used to be "pendingCount", computed via a broken
   // `search: 'Pending'` free-text query (which searches ride/visitor/code
   // text, not the Status column, so it rarely matched anything real). Now
@@ -157,35 +205,80 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/admin'}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
-                ${isActive
-                  ? 'bg-blue-50 text-blue-700 border border-blue-100'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`
-              }
-            >
-              {item.icon}
-              <span className="flex-1">{item.label}</span>
-              {item.to === '/admin/bookings' && unreadCount > 0 && (
-                <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full
-                  bg-red-500 text-white text-[11px] font-bold leading-none flex-shrink-0">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
-              {item.to === '/admin/notifications' && unreadNotifCount > 0 && (
-                <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full
-                  bg-red-500 text-white text-[11px] font-bold leading-none flex-shrink-0">
-                  {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
-                </span>
-              )}
-            </NavLink>
-          ))}
+          {navItems.map(item => {
+            if (isNavGroup(item)) {
+              const isGroupActive = item.children.some(c => location.pathname === c.to || location.pathname.startsWith(`${c.to}/`))
+              const isOpen = openGroups[item.label] ?? isGroupActive
+
+              return (
+                <div key={item.label}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenGroups(prev => ({ ...prev, [item.label]: !isOpen }))}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+                      ${isGroupActive
+                        ? 'text-blue-700'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                  >
+                    {item.icon}
+                    <span className="flex-1 text-left">{item.label}</span>
+                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isOpen && (
+                    <div className="mt-1 ml-4 pl-3 border-l border-gray-200 space-y-1">
+                      {item.children.map(child => (
+                        <NavLink
+                          key={child.to}
+                          to={child.to}
+                          onClick={() => setSidebarOpen(false)}
+                          className={({ isActive }) =>
+                            `flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
+                            ${isActive
+                              ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`
+                          }
+                        >
+                          {child.icon}
+                          <span className="flex-1">{child.label}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/admin'}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+                  ${isActive
+                    ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`
+                }
+              >
+                {item.icon}
+                <span className="flex-1">{item.label}</span>
+                {item.to === '/admin/bookings' && unreadCount > 0 && (
+                  <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full
+                    bg-red-500 text-white text-[11px] font-bold leading-none flex-shrink-0">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+                {item.to === '/admin/notifications' && unreadNotifCount > 0 && (
+                  <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full
+                    bg-red-500 text-white text-[11px] font-bold leading-none flex-shrink-0">
+                    {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+                  </span>
+                )}
+              </NavLink>
+            )
+          })}
         </nav>
 
         {/* User card */}

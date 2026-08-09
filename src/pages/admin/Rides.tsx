@@ -323,6 +323,13 @@ export default function AdminRidesPage() {
   useEffect(() => {
     const el = document.getElementById('admin-scroll-area')
     if (el) el.scrollTop = 0
+    // ✅ FIXED (again, mobile) — see Logs.tsx for the full explanation:
+    // some mobile browsers still leave the outer app shell scrollable, so
+    // reset the window/document scroll position too, not just the inner
+    // container.
+    window.scrollTo(0, 0)
+    document.documentElement.scrollTop = 0
+    document.body.scrollTop = 0
   }, [params.page])
 
   const openCreate = () => {
@@ -359,9 +366,30 @@ export default function AdminRidesPage() {
     setModalOpen(true)
   }
 
+  // ✅ NEW — client-side size/type guard so an oversized or unsupported
+  // photo gets an immediate toast instead of only failing after the whole
+  // file has already round-tripped to the backend. Mirrors the backend's
+  // own limit (10MB) and allowed types (adds HEIC/HEIF for iPhone photos).
+  const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+  const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif']
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    if (!ALLOWED_IMAGE_EXTENSIONS.includes(extension)) {
+      toast.error('Only JPG, PNG, WEBP, GIF, and HEIC/HEIF images are allowed.')
+      e.target.value = ''
+      return
+    }
+
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error('Photo must be under 10MB.')
+      e.target.value = ''
+      return
+    }
+
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
   }
@@ -763,9 +791,9 @@ export default function AdminRidesPage() {
                     <label className="cursor-pointer flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 font-medium transition-colors">
                       <Upload className="w-4 h-4" />
                       {editRide ? 'Change image (optional)' : 'Upload image'}
-                      <input ref={fileRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                      <input ref={fileRef} type="file" accept="image/*,.heic,.heif" onChange={handleImageChange} className="hidden" />
                     </label>
-                    <p className="text-xs text-gray-400 mt-1.5">JPG, PNG, WEBP · Max 5MB</p>
+                    <p className="text-xs text-gray-400 mt-1.5">JPG, PNG, WEBP, HEIC/HEIF · Max 10MB</p>
                   </div>
                 </div>
               </div>

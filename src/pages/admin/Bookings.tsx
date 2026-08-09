@@ -587,6 +587,10 @@ export default function AdminBookingsPage() {
   useEffect(() => {
     const el = document.getElementById('admin-scroll-area')
     if (el) el.scrollTop = 0
+    // ✅ FIXED (again, mobile) — see Logs.tsx for the full explanation.
+    window.scrollTo(0, 0)
+    document.documentElement.scrollTop = 0
+    document.body.scrollTop = 0
   }, [params.page])
 
   // Runs automatically in the background, no button needed. Marks expired
