@@ -225,6 +225,28 @@ function AccordionSection({ title, subtitle, icon, open, onToggle, children }: {
   )
 }
 
+// ✅ NEW — skeleton placeholder while settings load, matching the same gray
+// `animate-pulse` block pattern used on the other admin pages. Mirrors the
+// collapsed AccordionSection shape (icon + title/subtitle + chevron), since
+// that's the only thing visible on first load anyway (the accordion starts
+// closed).
+function SettingsAccordionSkeleton() {
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden animate-pulse">
+      <div className="flex items-center justify-between gap-3 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gray-200" />
+          <div className="space-y-1.5">
+            <div className="h-3.5 bg-gray-200 rounded w-40" />
+            <div className="h-2.5 bg-gray-100 rounded w-56" />
+          </div>
+        </div>
+        <div className="w-5 h-5 rounded bg-gray-200" />
+      </div>
+    </div>
+  )
+}
+
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -466,11 +488,7 @@ export default function AdminSettingsPage() {
 
       {loading ? (
 
-        <div className="flex items-center justify-center h-64">
-
-          <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
-
-        </div>
+        <SettingsAccordionSkeleton />
 
       ) : (
 

@@ -16,10 +16,6 @@ type SVGProps = ReactSVGProps<SVGSVGElement>
 
 const fmt = (n: any) => Number(n ?? 0).toFixed(2)
 
-function Spinner() {
-  return <div className="w-8 h-8 border-4 border-gray-200 border-t-emerald-500 rounded-full animate-spin" />
-}
-
 function Ticket(props: SVGProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -344,6 +340,57 @@ function MiniCard({ label, value, icon, color }: {
   )
 }
 
+// ✅ NEW — skeleton placeholders for the dashboard's loading state, matching
+// the gray `animate-pulse` block pattern already used on the other admin
+// pages, shaped after StatCard / MiniCard / the pending-approval row above.
+function StatCardSkeleton() {
+  return (
+    <div className="relative overflow-hidden rounded-2xl p-5 shadow-sm bg-gray-100 animate-pulse">
+      <div className="w-10 h-10 rounded-xl bg-gray-200 mb-3" />
+      <div className="h-7 bg-gray-200 rounded w-16 mb-2" />
+      <div className="h-3 bg-gray-200 rounded w-24" />
+    </div>
+  )
+}
+
+function MiniCardSkeleton() {
+  return (
+    <div className="flex items-center gap-3 p-3.5 rounded-xl border border-gray-100 bg-gray-50 animate-pulse">
+      <div className="w-8 h-8 rounded-lg bg-gray-200 flex-shrink-0" />
+      <div className="space-y-1.5">
+        <div className="h-5 bg-gray-200 rounded w-8" />
+        <div className="h-2.5 bg-gray-200 rounded w-14" />
+      </div>
+    </div>
+  )
+}
+
+function PendingRowSkeleton() {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 animate-pulse">
+      <div className="flex items-center gap-3 sm:contents">
+        <div className="w-10 h-10 rounded-xl bg-gray-200 flex-shrink-0" />
+        <div className="flex-1 sm:w-40 sm:flex-shrink-0 space-y-1.5">
+          <div className="h-3.5 bg-gray-200 rounded w-24" />
+          <div className="h-2.5 bg-gray-100 rounded w-16" />
+          <div className="h-4 bg-gray-100 rounded w-28" />
+        </div>
+      </div>
+      <div className="flex-1 space-y-1.5">
+        <div className="h-3.5 bg-gray-200 rounded w-40" />
+        <div className="h-2.5 bg-gray-100 rounded w-32" />
+      </div>
+      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
+        <div className="h-4 bg-gray-200 rounded w-14" />
+        <div className="flex gap-2">
+          <div className="w-9 h-9 rounded-full bg-gray-100" />
+          <div className="w-9 h-9 rounded-full bg-gray-100" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Badge({ label }: { label: string }) {
   const map: Record<string,string> = {
     Paid:'bg-green-100 text-green-700', Unpaid:'bg-amber-100 text-amber-700',
@@ -465,7 +512,35 @@ export default function AdminDashboardPage() {
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening'
 
   if (loading) return (
-    <div className="flex items-center justify-center h-64"><Spinner /></div>
+    <div className="p-4 sm:p-6 space-y-6">
+      <div>
+        <div className="text-xs text-gray-400 font-medium mb-1">
+          {now.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </div>
+        <h1 className="text-2xl font-bold text-gray-900">{greeting}, {user?.firstName ?? 'Admin'}! 👋</h1>
+        <p className="text-sm text-gray-500 mt-1">Overview of all park operations.</p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCardSkeleton /><StatCardSkeleton /><StatCardSkeleton /><StatCardSkeleton />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <MiniCardSkeleton /><MiniCardSkeleton /><MiniCardSkeleton /><MiniCardSkeleton /><MiniCardSkeleton />
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="px-5 py-4">
+          <div className="h-14 w-full bg-gray-100 rounded-xl animate-pulse" />
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="divide-y divide-gray-50">
+          {Array.from({ length: 5 }).map((_, i) => <PendingRowSkeleton key={i} />)}
+        </div>
+      </div>
+    </div>
   )
 
   return (
@@ -531,7 +606,7 @@ export default function AdminDashboardPage() {
         </div>
         <div className="px-5 py-4 flex items-center gap-6 flex-wrap">
           {ratingLoading ? (
-            <div className="flex items-center justify-center h-14 w-full"><Loader2 className="w-5 h-5 text-gray-300" /></div>
+            <div className="h-14 w-full bg-gray-100 rounded-xl animate-pulse" />
           ) : (
             <>
               <div className="flex-shrink-0">

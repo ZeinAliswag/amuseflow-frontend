@@ -69,4 +69,35 @@
     top: 0;
     width: 100%;
   }
+
+  /* ✅ NEW — without this, the browser was free to break a table row (or
+     the whole trend table) right at a page boundary, orphaning a single
+     leftover row onto its own near-empty page before the next forced break
+     kicked in. Keeping every row — and each table/card as a whole — intact
+     means a table that doesn't fully fit just moves entirely to the next
+     page instead of leaving a stray row behind with a wall of blank space
+     under it. */
+  .af-printable table,
+  .af-printable tr,
+  .af-printable .grid > div {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+/* ✅ NEW — "Page X of Y" printed in the bottom-right margin of every
+   physical page of the printable report, via the standard CSS Paged
+   Media page-counter mechanism (not something we can compute in JS,
+   since the browser alone decides where pages actually break). Support
+   varies by print engine — modern Chromium/Edge render this; browsers
+   that don't support @page margin boxes simply show no page number,
+   without breaking anything else. */
+@page {
+  margin: 0.6in 0.5in;
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 9px;
+    color: #9ca3af;
+  }
 }

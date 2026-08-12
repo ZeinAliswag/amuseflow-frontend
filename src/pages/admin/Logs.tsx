@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
-  ClipboardList, Filter, X, Clock, User, Tag, FileText,
- Calendar, Ticket, UserCog, Search, ChevronLeft, ChevronRight, CalendarDays, ChevronDown,
+  ClipboardList, Filter, X, Clock, User, Users, Tag, FileText,
+ Calendar, Ticket, Search, ChevronLeft, ChevronRight, CalendarDays, ChevronDown,
   FerrisWheel, Shield, HardHat, UserRound, ArrowDownWideNarrow, ArrowUpWideNarrow,
-  Settings as SettingsIcon
+  Wrench
 } from 'lucide-react'
 import type { ActivityLog, PaginationRequest } from '../../types'
 import api from '../../services/api'
@@ -45,8 +45,8 @@ function ModuleIcon({ m, size = 'sm' }: { m: string; size?: 'sm' | 'lg' }) {
   if (m === 'Ride')     return <FerrisWheel   className={`${cls} text-purple-600`} />
   if (m === 'Schedule') return <Calendar className={`${cls} text-amber-600`} />
   if (m === 'Booking')  return <Ticket   className={`${cls} text-green-600`} />
-  if (m === 'User')     return <UserCog  className={`${cls} text-blue-600`} />
-  if (m === 'Settings') return <SettingsIcon className={`${cls} text-gray-600`} />
+  if (m === 'User')     return <Users    className={`${cls} text-blue-600`} />
+  if (m === 'Settings') return <Wrench   className={`${cls} text-gray-600`} />
   return <ClipboardList className={`${cls} text-gray-500`} />
 }
 

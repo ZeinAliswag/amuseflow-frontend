@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   LogOut, ChevronDown, History, KeyRound, X, Loader2,
   Calendar, CheckCircle2, Filter, Bell, CheckCheck,
-  Circle, Pencil, Lock, Ticket, UserCog, ClipboardList,
+  Circle, Pencil, Lock, Ticket, Users, ClipboardList,
   Search, ChevronLeft, ChevronRight, CalendarDays, Tag, FileText, User, Clock,
   XCircle, Wallet, PartyPopper, Star
 } from 'lucide-react'
@@ -267,7 +267,7 @@ const moduleColor = (m: string) => {
 function ModuleIcon({ m, size = 'sm' }: { m: string; size?: 'sm' | 'lg' }) {
   const cls = size === 'lg' ? 'w-5 h-5' : 'w-4 h-4'
   if (m === 'Booking')  return <Ticket        className={`${cls} text-green-600`} />
-  if (m === 'User')     return <UserCog       className={`${cls} text-blue-600`} />
+  if (m === 'User')     return <Users         className={`${cls} text-blue-600`} />
   if (m === 'Review')   return <Star          className={`${cls} text-yellow-700`} />
   return <ClipboardList className={`${cls} text-gray-500`} />
 }

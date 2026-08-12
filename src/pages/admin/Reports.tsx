@@ -4,8 +4,15 @@ import {
   BarChart3, Star, Printer, FerrisWheel, BadgePercent,
   TrendingUp, Award, ListChecks, Loader2, Filter,
   CalendarDays, ChevronLeft, ChevronRight, ChevronDown, X,
-  SortAsc, SortDesc, Type, Search,
+  SortAsc, SortDesc, Type, Search, FileDown, FileText,
 } from 'lucide-react'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
+import {
+  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+  ImageRun, WidthType, AlignmentType, BorderStyle, ShadingType, VerticalAlign,
+  Footer, PageNumber,
+} from 'docx'
 import { reportApi } from '../../services/api'
 import type { RatingTrend, RatingTrendPoint, EntityRating } from '../../types'
 import { Card, Pagination } from '../../components/shared'
@@ -78,14 +85,26 @@ function thisMonthRange(): [string, string] {
   return [toISO(start), toISO(today)]
 }
 
+// ✅ CHANGED — partial fill instead of rounding to the nearest whole star.
+// A 4.8 no longer rounds up to a full 5th star; it renders 4 full stars
+// plus a 5th star that's only 80% filled (4.75 → 75% filled, etc.), so the
+// stars actually reflect the decimal instead of exaggerating it.
 function Stars({ value, size = 14, className = '' }: { value: number; size?: number; className?: string }) {
-  const rounded = Math.round(value)
   return (
     <span className={`inline-flex items-center gap-0.5 ${className}`}>
-      {[1, 2, 3, 4, 5].map(i => (
-        <Star key={i} style={{ width: size, height: size }}
-          className={i <= rounded ? 'fill-amber-400 text-amber-400' : 'text-gray-200'} />
-      ))}
+      {[1, 2, 3, 4, 5].map(i => {
+        const fillPct = Math.round(Math.max(0, Math.min(1, value - (i - 1))) * 100)
+        return (
+          <span key={i} className="relative inline-block flex-shrink-0" style={{ width: size, height: size }}>
+            <Star style={{ width: size, height: size }} className="absolute inset-0 text-gray-200" />
+            {fillPct > 0 && (
+              <span className="absolute inset-0 overflow-hidden" style={{ width: `${fillPct}%` }}>
+                <Star style={{ width: size, height: size }} className="fill-amber-400 text-amber-400" />
+              </span>
+            )}
+          </span>
+        )
+      })}
     </span>
   )
 }
@@ -516,6 +535,293 @@ function EntityCombobox({ scope, options, value, onChange }: {
   )
 }
 
+// ── Word (.docx) export — builds a real, editable Word document from the
+// same data behind the printed report (not an HTML→docx conversion, which
+// tends to produce messy markup). Mirrors the letterhead, summary, trend
+// table, breakdown table, and signature block. ──
+const DOCX_FONT = 'Arial'
+const DOCX_PAGE_WIDTH_DXA = 9360 // US Letter minus 1in margins on each side
+
+function docxCell(text: string, opts: {
+  width: number; bold?: boolean; size?: number; color?: string; shade?: string
+  align?: typeof AlignmentType[keyof typeof AlignmentType]
+}) {
+  return new TableCell({
+    width: { size: opts.width, type: WidthType.DXA },
+    shading: opts.shade ? { type: ShadingType.CLEAR, color: 'auto', fill: opts.shade } : undefined,
+    verticalAlign: VerticalAlign.CENTER,
+    margins: { top: 80, bottom: 80, left: 100, right: 100 },
+    children: [new Paragraph({
+      alignment: opts.align ?? AlignmentType.LEFT,
+      children: [new TextRun({ text, bold: opts.bold, size: opts.size ?? 18, color: opts.color, font: DOCX_FONT })],
+    })],
+  })
+}
+
+const DOCX_NO_BORDERS = {
+  top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+}
+
+async function buildReportDocx(params: {
+  scopeLabel: string
+  periodLabel: string
+  overallAverage: number
+  overallReviewCount: number
+  ratedCount: number
+  points: RatingTrendPoint[]
+  breakdown: EntityRating[]
+  breakdownHeading: string
+  preparedByName: string
+  generatedAtLabel: string
+}): Promise<Blob> {
+  const logoBuffer = await fetch(LOGO_SRC).then(r => r.arrayBuffer())
+
+  const letterhead = new Table({
+    width: { size: DOCX_PAGE_WIDTH_DXA, type: WidthType.DXA },
+    columnWidths: [1300, DOCX_PAGE_WIDTH_DXA - 1300],
+    borders: DOCX_NO_BORDERS,
+    rows: [new TableRow({
+      children: [
+        new TableCell({
+          width: { size: 1300, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.CENTER,
+          children: [new Paragraph({
+            children: [new ImageRun({ type: 'png', data: logoBuffer, transformation: { width: 64, height: 64 } })],
+          })],
+        }),
+        new TableCell({
+          width: { size: DOCX_PAGE_WIDTH_DXA - 1300, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.CENTER,
+          children: [
+            new Paragraph({ children: [new TextRun({ text: PARK_NAME, bold: true, size: 44, font: DOCX_FONT })] }),
+            new Paragraph({ children: [new TextRun({ text: PARK_ADDRESS, size: 20, color: '666666', font: DOCX_FONT })] }),
+          ],
+        }),
+      ],
+    })],
+  })
+
+  const summaryTable = new Table({
+    width: { size: DOCX_PAGE_WIDTH_DXA, type: WidthType.DXA },
+    columnWidths: [3120, 3120, 3120],
+    borders: { ...DOCX_NO_BORDERS, top: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' }, bottom: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' }, insideVertical: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' } },
+    rows: [new TableRow({
+      children: [
+        new TableCell({
+          width: { size: 3120, type: WidthType.DXA }, margins: { top: 120, bottom: 120, left: 140, right: 140 },
+          children: [
+            new Paragraph({ children: [new TextRun({ text: 'OVERALL AVERAGE RATING', size: 14, color: '6B7280', font: DOCX_FONT })] }),
+            new Paragraph({ children: [new TextRun({ text: params.overallAverage.toFixed(2), bold: true, size: 30, font: DOCX_FONT })] }),
+          ],
+        }),
+        new TableCell({
+          width: { size: 3120, type: WidthType.DXA }, margins: { top: 120, bottom: 120, left: 140, right: 140 },
+          children: [
+            new Paragraph({ children: [new TextRun({ text: 'TOTAL REVIEWS', size: 14, color: '6B7280', font: DOCX_FONT })] }),
+            new Paragraph({ children: [new TextRun({ text: String(params.overallReviewCount), bold: true, size: 30, font: DOCX_FONT })] }),
+          ],
+        }),
+        new TableCell({
+          width: { size: 3120, type: WidthType.DXA }, margins: { top: 120, bottom: 120, left: 140, right: 140 },
+          children: [
+            new Paragraph({ children: [new TextRun({ text: 'ENTITIES RATED', size: 14, color: '6B7280', font: DOCX_FONT })] }),
+            new Paragraph({ children: [new TextRun({ text: String(params.ratedCount), bold: true, size: 30, font: DOCX_FONT })] }),
+          ],
+        }),
+      ],
+    })],
+  })
+
+  const trendHeaderRow = new TableRow({
+    tableHeader: true,
+    children: [
+      docxCell('Month', { width: 3120, bold: true, size: 18, shade: 'F3F4F6' }),
+      docxCell('Average Rating', { width: 3120, bold: true, size: 18, shade: 'F3F4F6' }),
+      docxCell('Reviews', { width: 3120, bold: true, size: 18, shade: 'F3F4F6' }),
+    ],
+  })
+  const trendRows = params.points.map(p => new TableRow({
+    children: [
+      docxCell(p.monthLabel, { width: 3120 }),
+      docxCell(p.reviewCount > 0 ? p.averageRating.toFixed(2) : '—', { width: 3120 }),
+      docxCell(String(p.reviewCount), { width: 3120 }),
+    ],
+  }))
+  const trendTable = new Table({
+    width: { size: DOCX_PAGE_WIDTH_DXA, type: WidthType.DXA },
+    columnWidths: [3120, 3120, 3120],
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+      left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    },
+    rows: [trendHeaderRow, ...trendRows],
+  })
+
+  const breakdownHeaderRow = new TableRow({
+    tableHeader: true,
+    children: [
+      docxCell('Name', { width: 3660, bold: true, size: 18, shade: 'F3F4F6' }),
+      docxCell('Type', { width: 2200, bold: true, size: 18, shade: 'F3F4F6' }),
+      docxCell('Average Rating', { width: 1900, bold: true, size: 18, shade: 'F3F4F6' }),
+      docxCell('Reviews', { width: 1600, bold: true, size: 18, shade: 'F3F4F6' }),
+    ],
+  })
+  const breakdownRows = params.breakdown.map(e => new TableRow({
+    children: [
+      docxCell(e.name, { width: 3660 }),
+      docxCell(e.type, { width: 2200 }),
+      docxCell(e.reviewCount > 0 ? e.averageRating.toFixed(2) : '—', { width: 1900 }),
+      docxCell(String(e.reviewCount), { width: 1600 }),
+    ],
+  }))
+  const breakdownTable = new Table({
+    width: { size: DOCX_PAGE_WIDTH_DXA, type: WidthType.DXA },
+    columnWidths: [3660, 2200, 1900, 1600],
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' },
+      left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: 'E5E7EB' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    },
+    rows: [breakdownHeaderRow, ...breakdownRows],
+  })
+
+  // Signature block — a blank bottom-bordered line (for an actual pen
+  // signature) with the printed name below it, same as the printed report.
+  const signatureCell = (name: string, label: string, width: number) => new TableCell({
+    width: { size: width, type: WidthType.DXA },
+    margins: { top: 400, bottom: 0, left: 100, right: 100 },
+    children: [
+      new Paragraph({
+        spacing: { after: 40 },
+        border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '1F2937', space: 1 } },
+        children: [new TextRun({ text: ' ', font: DOCX_FONT })],
+      }),
+      new Paragraph({ children: [new TextRun({ text: name || ' ', bold: true, size: 18, font: DOCX_FONT })] }),
+      new Paragraph({ children: [new TextRun({ text: label, size: 14, color: '6B7280', font: DOCX_FONT })] }),
+    ],
+  })
+  const signatureTable = new Table({
+    width: { size: DOCX_PAGE_WIDTH_DXA, type: WidthType.DXA },
+    columnWidths: [4680, 4680],
+    borders: DOCX_NO_BORDERS,
+    rows: [new TableRow({
+      children: [
+        signatureCell(params.preparedByName, 'Prepared by', 4680),
+        signatureCell('', 'Verified by', 4680),
+      ],
+    })],
+  })
+
+  const pageNumberFooter = new Footer({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.RIGHT,
+        children: [
+          new TextRun({ text: 'Page ', size: 14, color: '9CA3AF', font: DOCX_FONT }),
+          new TextRun({ children: [PageNumber.CURRENT], size: 14, color: '9CA3AF', font: DOCX_FONT }),
+          new TextRun({ text: ' of ', size: 14, color: '9CA3AF', font: DOCX_FONT }),
+          new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 14, color: '9CA3AF', font: DOCX_FONT }),
+        ],
+      }),
+    ],
+  })
+
+  const doc = new Document({
+    sections: [{
+      properties: { page: { size: { width: 12240, height: 15840 } } },
+      footers: { default: pageNumberFooter },
+      children: [
+        letterhead,
+        new Paragraph({
+          spacing: { before: 160, after: 240 },
+          border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: '1F2937', space: 6 } },
+          children: [],
+        }),
+        new Paragraph({
+          spacing: { after: 40 },
+          children: [new TextRun({ text: 'ATTRACTION & BUNDLE RATING REPORT', bold: true, size: 26, font: DOCX_FONT })],
+        }),
+        new Paragraph({
+          spacing: { after: 240 },
+          children: [
+            new TextRun({ text: `Scope: `, size: 16, color: '6B7280', font: DOCX_FONT }),
+            new TextRun({ text: params.scopeLabel, bold: true, size: 16, color: '6B7280', font: DOCX_FONT }),
+            new TextRun({ text: `   ·   Period: ${params.periodLabel}`, size: 16, color: '6B7280', font: DOCX_FONT }),
+          ],
+        }),
+        summaryTable,
+        new Paragraph({
+          spacing: { before: 280, after: 100 },
+          children: [new TextRun({ text: 'MONTHLY AVERAGE RATING TREND', bold: true, size: 16, color: '6B7280', font: DOCX_FONT })],
+        }),
+        trendTable,
+        new Paragraph({
+          spacing: { before: 280, after: 100 },
+          children: [new TextRun({ text: params.breakdownHeading.toUpperCase(), bold: true, size: 16, color: '6B7280', font: DOCX_FONT })],
+        }),
+        breakdownTable,
+        new Paragraph({ spacing: { before: 500 }, children: [] }),
+        signatureTable,
+        new Paragraph({
+          spacing: { before: 400, after: 20 },
+          border: { top: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB', space: 6 } },
+          children: [new TextRun({ text: `${PARK_NAME} — Internal Report, Confidential`, size: 14, color: '9CA3AF', font: DOCX_FONT })],
+        }),
+        new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          spacing: { after: 40 },
+          children: [new TextRun({ text: 'Auto-generated by AmuseFlow System', size: 14, color: '9CA3AF', font: DOCX_FONT })],
+        }),
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [new TextRun({ text: `Generated: ${params.generatedAtLabel}   ·   By: ${params.preparedByName}`, size: 14, color: '9CA3AF', font: DOCX_FONT })],
+        }),
+      ],
+    }],
+  })
+
+  return Packer.toBlob(doc)
+}
+
+// ✅ NEW — skeleton placeholders for the overview cards / breakdown rows,
+// matching the same gray `animate-pulse` block pattern used on the other
+// admin pages (Bookings, Promos, etc.) instead of a bare spinner.
+function ReportStatCardSkeleton() {
+  return (
+    <div className="relative overflow-hidden rounded-2xl p-5 shadow-sm bg-gray-100 animate-pulse">
+      <div className="w-10 h-10 rounded-xl bg-gray-200 mb-3" />
+      <div className="h-7 bg-gray-200 rounded w-16 mb-2" />
+      <div className="h-3 bg-gray-200 rounded w-24" />
+    </div>
+  )
+}
+
+function ReportBreakdownRowSkeleton() {
+  return (
+    <div className="flex items-center gap-4 px-4 sm:px-5 py-3.5 animate-pulse">
+      <div className="w-9 h-9 rounded-xl bg-gray-200 flex-shrink-0" />
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="h-3.5 bg-gray-200 rounded w-40" />
+        <div className="h-4 bg-gray-100 rounded-full w-20" />
+      </div>
+      <div className="h-4 bg-gray-200 rounded w-20 flex-shrink-0" />
+      <div className="h-3 bg-gray-100 rounded w-16 flex-shrink-0" />
+    </div>
+  )
+}
+
 export default function AdminReportsPage() {
   const { user } = useAuth()
 
@@ -529,6 +835,11 @@ export default function AdminReportsPage() {
   const [breakdown, setBreakdown] = useState<EntityRating[]>([])
   const [loadingTrend, setLoadingTrend] = useState(true)
   const [loadingBreakdown, setLoadingBreakdown] = useState(true)
+
+  // ── PDF / Word export ──────────────────────────────────────────────
+  const printableRef = useRef<HTMLDivElement>(null)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [downloadingWord, setDownloadingWord] = useState(false)
 
   // ── Breakdown table sort + pagination (client-side — the list of
   // Attractions/Bundles is small enough that a second server round trip
@@ -638,6 +949,156 @@ export default function AdminReportsPage() {
 
   const periodLabel = fmtRange(fromDate, toDate)
   const generatedAtLabel = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' })
+  const breakdownHeading = `Rating Breakdown by ${scope === 'Promo' ? 'Attraction Bundle' : scope === 'Ride' ? 'Attraction' : 'Attraction / Bundle'}`
+
+  // The printable div is normally `display:none` (Tailwind `hidden`) except
+  // during @media print. html2canvas can't rasterize a display:none element,
+  // so for the duration of the capture it's temporarily forced visible but
+  // pushed off-screen (not just opacity/visibility, which html2canvas also
+  // struggles with) — then every inline style we touched is restored in a
+  // `finally` so the on-screen page never visibly flickers.
+  //
+  // ✅ CHANGED — jsPDF's own `.html()` renderer (autoPaging: 'text') was
+  // tried here first, but it renders a fixed/off-screen source element into
+  // a blank page (a known jsPDF+html2canvas quirk with position:fixed
+  // sources). Reverted to a single html2canvas capture, but instead of
+  // slicing that tall image at raw fixed-pixel page boundaries (which could
+  // cut a table row or summary card in half), each page break is snapped to
+  // the nearest safe gap — the bottom edge of a <tr> or a top-level report
+  // section — so nothing ever gets sliced through.
+  const handleDownloadPdf = async () => {
+    const node = printableRef.current
+    if (!node) return
+    setDownloadingPdf(true)
+    const prevStyle = node.getAttribute('style')
+    const contentWidthPx = 816
+    try {
+      node.classList.remove('hidden')
+      Object.assign(node.style, {
+        display: 'block', position: 'fixed', top: '0', left: '-99999px',
+        width: `${contentWidthPx}px`, zIndex: '-1',
+      })
+
+      const canvas = await html2canvas(node, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+      const nodeRect = node.getBoundingClientRect()
+      const ratio = canvas.width / nodeRect.width // css px → canvas px
+
+      // "Safe" cut points — the bottom edge of every table row plus every
+      // top-level section of the report (letterhead, summary cards, chart,
+      // tables, signature block, footer) — a page break is only ever placed
+      // at one of these Y positions, never in the middle of them.
+      const safeEls = Array.from(node.querySelectorAll('tr, :scope > div, :scope > table, .grid > div'))
+      const safeBottoms = Array.from(new Set(
+        safeEls.map(el => Math.round((el.getBoundingClientRect().bottom - nodeRect.top) * ratio))
+      )).sort((a, b) => a - b)
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' })
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      const ptPerCanvasPx = pageWidth / canvas.width // imgWidth fills the full canvas width to pageWidth
+      // Reserve a blank strip at the bottom of every page for the "Page X
+      // of Y" stamp, so content never runs right up against — or under —
+      // the page number.
+      const footerGapPt = 26
+      // The report's own p-10 padding gives page 1 a natural top margin
+      // (it's baked into the captured image), but every later page starts
+      // wherever the previous one was cut — flush against the paper edge
+      // with no breathing room. Reserve the same gap at the top of every
+      // page 2+ and shift those images down by it when placing them.
+      const topGapPt = 28
+      const pageHeightPx = (pageHeight - footerGapPt - topGapPt) / ptPerCanvasPx
+
+      // Row/section-safe pagination within a single [from, to) range —
+      // never places a break inside a <tr> or a top-level section.
+      const paginate = (from: number, to: number): Array<[number, number]> => {
+        const result: Array<[number, number]> = []
+        let cur = from
+        while (cur < to - 1) {
+          const idealEnd = Math.min(cur + pageHeightPx, to)
+          if (idealEnd >= to) { result.push([cur, to]); break }
+          const snapped = safeBottoms.filter(b => b > cur && b <= idealEnd).pop()
+          result.push([cur, snapped ?? idealEnd])
+          cur = snapped ?? idealEnd
+        }
+        return result
+      }
+
+      // ✅ The breakdown table (marked `break-before: page` for the on-screen
+      // print view) always starts its own page here too. Splitting the
+      // image into two independent ranges — up to the heading, then from the
+      // heading onward — and paginating each separately (rather than trying
+      // to inject a forced break into one continuous loop) guarantees
+      // exactly one clean break at that point, with no risk of a stray
+      // near-empty page from a forced break landing too close to a natural
+      // one.
+      const forcedBreakEl = node.querySelector('[style*="break-before"]') as HTMLElement | null
+      const hardBreak = forcedBreakEl
+        ? Math.round((forcedBreakEl.getBoundingClientRect().top - nodeRect.top) * ratio)
+        : 0
+
+      const slices = hardBreak > 20 && hardBreak < canvas.height - 20
+        ? [...paginate(0, hardBreak), ...paginate(hardBreak, canvas.height)]
+        : paginate(0, canvas.height)
+
+      slices.forEach(([start, end], i) => {
+        if (i > 0) pdf.addPage()
+        const sliceCanvas = document.createElement('canvas')
+        sliceCanvas.width = canvas.width
+        sliceCanvas.height = end - start
+        const ctx = sliceCanvas.getContext('2d')!
+        ctx.drawImage(canvas, 0, start, canvas.width, end - start, 0, 0, canvas.width, end - start)
+        const y = i === 0 ? 0 : topGapPt
+        pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', 0, y, pageWidth, (end - start) * ptPerCanvasPx)
+      })
+
+      const totalPages = slices.length
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i)
+        pdf.setFontSize(8)
+        pdf.setTextColor(156, 163, 175)
+        pdf.text(`Page ${i} of ${totalPages}`, pageWidth - 24, pageHeight - 14, { align: 'right' })
+      }
+
+      pdf.save(`AmuseFlow Rating Report - ${periodLabel}.pdf`)
+    } catch (e) {
+      toast.error('Failed to generate PDF.')
+    } finally {
+      if (prevStyle === null) node.removeAttribute('style')
+      else node.setAttribute('style', prevStyle)
+      node.classList.add('hidden')
+      setDownloadingPdf(false)
+    }
+  }
+
+  const handleDownloadWord = async () => {
+    setDownloadingWord(true)
+    try {
+      const blob = await buildReportDocx({
+        scopeLabel: trend?.scopeLabel ?? '—',
+        periodLabel,
+        overallAverage: trend?.overallAverage ?? 0,
+        overallReviewCount: trend?.overallReviewCount ?? 0,
+        ratedCount,
+        points: trend?.points ?? [],
+        breakdown: sortedBreakdown,
+        breakdownHeading,
+        preparedByName: user?.fullName ?? 'Admin',
+        generatedAtLabel,
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `AmuseFlow Rating Report - ${periodLabel}.docx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      toast.error('Failed to generate Word document.')
+    } finally {
+      setDownloadingWord(false)
+    }
+  }
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
@@ -647,10 +1108,20 @@ export default function AdminReportsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
           <p className="text-sm text-gray-500 mt-1">Average visitor ratings by month, attraction, and attraction bundle.</p>
         </div>
-        <button onClick={() => window.print()} disabled={loadingTrend || loadingBreakdown}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50">
-          <Printer className="w-4 h-4" /> Print report
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={handleDownloadPdf} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
+            {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} Download PDF
+          </button>
+          <button onClick={handleDownloadWord} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
+            {downloadingWord ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Download Word
+          </button>
+          <button onClick={() => window.print()} disabled={loadingTrend || loadingBreakdown}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50">
+            <Printer className="w-4 h-4" /> Print report
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -669,6 +1140,15 @@ export default function AdminReportsPage() {
 
       {/* Overview cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {loadingTrend || loadingBreakdown ? (
+          <>
+            <ReportStatCardSkeleton />
+            <ReportStatCardSkeleton />
+            <ReportStatCardSkeleton />
+            <ReportStatCardSkeleton />
+          </>
+        ) : (
+          <>
         <div className="relative overflow-hidden rounded-2xl p-5 text-white shadow-sm bg-gradient-to-br from-amber-400 to-amber-500">
           <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center mb-3">
             <Star className="w-5 h-5 text-white" />
@@ -703,6 +1183,8 @@ export default function AdminReportsPage() {
           </div>
           <div className="absolute -bottom-4 -right-4 w-20 h-20 rounded-full bg-white/10" />
         </div>
+          </>
+        )}
       </div>
 
       {/* Trend chart */}
@@ -718,7 +1200,7 @@ export default function AdminReportsPage() {
         </div>
         <div className="p-5">
           {loadingTrend ? (
-            <div className="flex items-center justify-center h-60"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
+            <div className="h-60 bg-gray-100 rounded-xl animate-pulse" />
           ) : trend && trend.points.length > 0 ? (
             <RatingTrendChart points={trend.points} />
           ) : (
@@ -751,7 +1233,9 @@ export default function AdminReportsPage() {
         </div>
 
         {loadingBreakdown ? (
-          <div className="flex items-center justify-center py-14"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
+          <div className="divide-y divide-gray-50">
+            {Array.from({ length: pageSize }).map((_, i) => <ReportBreakdownRowSkeleton key={i} />)}
+          </div>
         ) : pagedBreakdown.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 text-gray-400">
             <ListChecks className="w-12 h-12 mb-3 text-gray-200" />
@@ -815,12 +1299,12 @@ export default function AdminReportsPage() {
           numbers, the monthly trend (chart + exact table), and the FULL
           (unpaginated) breakdown table, in the same sort order chosen
           on-screen. ── */}
-      <div className="af-printable hidden bg-white text-gray-900 p-10">
+      <div ref={printableRef} className="af-printable hidden bg-white text-gray-900 p-10">
         <div className="flex items-center gap-4 border-b-2 border-gray-800 pb-4 mb-6">
-          <img src={LOGO_SRC} alt={PARK_NAME} className="w-20 h-20 object-contain flex-shrink-0" />
-          <div>
-            <div className="text-2xl font-bold tracking-tight">{PARK_NAME}</div>
-            <div className="text-xs text-gray-600 mt-0.5">{PARK_ADDRESS}</div>
+          <img src={LOGO_SRC} alt={PARK_NAME} className="w-16 h-16 object-contain flex-shrink-0 self-center" />
+          <div className="self-center">
+            <div className="text-3xl font-bold tracking-tight leading-tight">{PARK_NAME}</div>
+            <div className="text-sm text-gray-600 mt-1">{PARK_ADDRESS}</div>
           </div>
         </div>
 
@@ -872,8 +1356,11 @@ export default function AdminReportsPage() {
           </tbody>
         </table>
 
-        <div className="text-xs font-semibold uppercase text-gray-500 mb-2">
-          Rating Breakdown by {scope === 'Promo' ? 'Attraction Bundle' : scope === 'Ride' ? 'Attraction' : 'Attraction / Bundle'}
+        {/* ✅ NEW — the full breakdown table always starts on its own printed
+            page, so page 1 (letterhead, summary cards, trend chart) never
+            gets a half-cut-off table jammed underneath it. */}
+        <div className="text-xs font-semibold uppercase text-gray-500 mb-2" style={{ breakBefore: 'page', pageBreakBefore: 'always' }}>
+          {breakdownHeading}
           {sortBy !== '' && ` (sorted by ${SORT_BY_OPTS.find(o => o.value === sortBy)?.label}, ${sortDir === 'ASC' ? 'ascending' : 'descending'})`}
         </div>
         <table className="w-full text-xs border-collapse">
