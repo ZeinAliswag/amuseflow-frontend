@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   LogOut, ChevronDown, History, KeyRound, X, Loader2,
   Calendar, CheckCircle2, Filter, Bell, CheckCheck,
-  Circle, Pencil, Lock, Ticket, UserCog, ClipboardList,
+  Circle, Pencil, Lock, Ticket, Users, ClipboardList,
   Search, ChevronLeft, ChevronRight, CalendarDays, Tag, FileText, User, Clock,
   XCircle, Wallet, PartyPopper, Star
 } from 'lucide-react'
@@ -267,7 +267,7 @@ const moduleColor = (m: string) => {
 function ModuleIcon({ m, size = 'sm' }: { m: string; size?: 'sm' | 'lg' }) {
   const cls = size === 'lg' ? 'w-5 h-5' : 'w-4 h-4'
   if (m === 'Booking')  return <Ticket        className={`${cls} text-green-600`} />
-  if (m === 'User')     return <UserCog       className={`${cls} text-blue-600`} />
+  if (m === 'User')     return <Users         className={`${cls} text-blue-600`} />
   if (m === 'Review')   return <Star          className={`${cls} text-yellow-700`} />
   return <ClipboardList className={`${cls} text-gray-500`} />
 }
@@ -326,8 +326,8 @@ const toISO = (d: Date) => {
 // ✅ CHANGED — added year so a filtered date range in a different year (e.g.
 // picking a past/future year in the calendar) doesn't render ambiguously as
 // just "Jan 9 – Jan 10" with no indication of which year.
-const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
-const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric' })
+const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
 // ✅ CHANGED — a same-year range only needs the year once, at the end
 // ("Jan 9 – Jan 10, 1974"); a range spanning two different years needs it on
 // both ends ("Jan 9, 1974 – Jan 10, 1978") so it isn't ambiguous.

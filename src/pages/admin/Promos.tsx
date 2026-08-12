@@ -40,7 +40,22 @@ function fmtDate(d?: string) {
   return d.slice(0, 10)
 }
 
-const fmtShort = (iso: string) => iso.slice(0, 10)
+// ✅ CHANGED — the "All dates" range button/picker now shows a real
+// human-readable long-month date ("July 13, 2026") instead of the raw
+// ISO string, matching the date-range filter style used on every other
+// Admin/Attendant/Visitor page. (fmtDate above is unrelated — it's kept
+// numeric on purpose for the promo's own date field.)
+const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric' })
+const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+// A same-year range only needs the year once, at the end; a range
+// spanning two different years needs it on both ends so it isn't
+// ambiguous which year each side falls in.
+function fmtRange(from: string, to: string) {
+  if (from === to) return fmtLong(from)
+  return from.slice(0, 4) === to.slice(0, 4)
+    ? `${fmtShort(from)} – ${fmtLong(to)}`
+    : `${fmtLong(from)} – ${fmtLong(to)}`
+}
 
 const toISO = (d: Date) => {
   const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0')
@@ -406,8 +421,8 @@ function DateRangeButton({ from, to, onClick }: { from: string; to: string; onCl
   const label = !from && !to
     ? 'All dates'
     : from && to
-      ? (from === to ? fmtShort(from) : `${fmtShort(from)} – ${fmtShort(to)}`)
-      : from ? `From ${fmtShort(from)}` : `Until ${fmtShort(to)}`
+      ? fmtRange(from, to)
+      : from ? `From ${fmtLong(from)}` : `Until ${fmtLong(to)}`
 
   return (
     <button type="button" onClick={onClick}
