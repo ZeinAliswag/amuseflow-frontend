@@ -83,6 +83,12 @@ export interface Ride {
   // ✅ NEW — optional weight range restriction, same min/max pattern as age.
   minWeightKg?: number
   maxWeightKg?: number
+  // ✅ NEW — which Rider Category preset(s) (Kid/Teen/Adult) this ride is
+  // tagged with. Empty = "All Visitors". This is the real, stored category
+  // — separate from (but usually consistent with) the Min/Max fields
+  // above, which stay the actual enforced booking-time restriction.
+  categoryIds: number[]
+  categoryNames: string[]
   isDeleted: boolean
   // ✅ NEW — true while this ride has at least one Open or Full schedule
   // (upcoming, still-open-today, or currently in progress). Backend also
@@ -123,6 +129,11 @@ export interface Schedule {
   maxAgeYears?: number
   minWeightKg?: number
   maxWeightKg?: number
+
+  // ✅ NEW — the underlying ride's Kid/Teen/Adult category tagging,
+  // resolved server-side (see ScheduleService.AttachCategoryNamesAsync).
+  // Empty/missing = General Admission (no category tag).
+  categoryNames?: string[]
 
   // ✅ NEW — which Attraction Bundle (if any) this schedule is locked into,
   // so the admin Schedules calendar can group a bundle's rides together.
@@ -181,6 +192,12 @@ export interface RidePromo {
   createdAt: string
   updatedAt: string
   rides: PromoRideItem[]
+
+  // ✅ NEW — which Rider Category preset(s) this BUNDLE itself is tagged
+  // with. Empty = "All Ages". Separate from (but used to filter) the
+  // categories any individual bundled ride carries.
+  categoryIds: number[]
+  categoryNames: string[]
 }
 
 // One included ride within a promo BOOKING — each keeps its own chosen
@@ -342,6 +359,25 @@ export interface RideValidationSettings {
   minWeightCeilingKg: number
   maxWeightFloorKg: number
   maxWeightCeilingKg: number
+
+  updatedAt: string
+  updatedByAdminId?: number
+}
+
+// ✅ NEW — the 3 fixed Kid/Teen/Adult rider category presets (id 1/2/3).
+// A convenience quick-fill, not a new source of truth: picking one or more
+// of these on a Ride pre-fills that Ride's own restriction fields (still
+// what's actually validated) with the union of the selected presets' ranges.
+export interface RiderCategoryPreset {
+  id: number
+  name: string // 'Kid' | 'Teen' | 'Adult'
+
+  minAgeYears: number
+  maxAgeYears: number
+  minHeightCm: number
+  maxHeightCm: number
+  minWeightKg: number
+  maxWeightKg: number
 
   updatedAt: string
   updatedByAdminId?: number

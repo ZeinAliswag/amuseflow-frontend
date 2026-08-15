@@ -6,10 +6,11 @@ import {
   ChevronLeft, ChevronRight, ZoomIn, X, Loader2, ChevronDown, Filter,
   SortAsc, SortDesc, Type, Banknote,
   FerrisWheel,
-  Maximize2, Ruler, Cake, Weight, Star
+  Maximize2, Ruler, Cake, Weight, Star,
+  Baby, Backpack, Briefcase, Globe
 } from 'lucide-react'
-import type { Ride, PaginationRequest, RideValidationSettings } from '../../types'
-import api, { apiForm, extractApiError, settingsApi } from '../../services/api'
+import type { Ride, PaginationRequest, RideValidationSettings, RiderCategoryPreset } from '../../types'
+import api, { apiForm, extractApiError, settingsApi, riderCategoryApi } from '../../services/api'
 import toast from 'react-hot-toast'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
@@ -289,6 +290,122 @@ export default function AdminRidesPage() {
       .catch(() => { /* keep defaults — ride saving still works */ })
   }, [])
 
+  // ✅ NEW — live, as-you-type range check against the fetched `bounds`.
+  // Previously a value outside the configured floor/ceiling only surfaced
+  // as a toast on Save — typing an out-of-range number (e.g. a Max age of
+  // 103 when the ceiling is 100) looked identical to a valid one until
+  // submit. This returns an error string the moment the field is out of
+  // range so the input can show a red border + inline message immediately.
+  const fieldRangeError = (value: string | number, floor: number, ceiling: number, rangeLabel?: string): string | null => {
+    if (value === '' || value == null) return null
+    const n = Number(value)
+    if (isNaN(n)) return null
+    if (n < floor || n > ceiling) return `Must be between ${floor} and ${ceiling}${rangeLabel ? ` (${rangeLabel} range).` : '.'}`
+    return null
+  }
+
+  // ✅ CHANGED — Kid/Teen/Adult rider category presets (Admin > Settings).
+  // Picking a chip both (a) pre-fills this modal's Height/Age/Weight fields
+  // with the union of the selected presets' ranges — same convenience as
+  // before — AND (b) is now the real, saved answer to "who can ride this",
+  // persisted on the Ride itself (RideCategoryLinks) so Attraction Bundles
+  // can filter their ride picker by category. Failing silently here (like
+  // `bounds` above) just means the chip row doesn't render — manual entry
+  // of the height/age/weight fields still works.
+  const [categoryPresets, setCategoryPresets] = useState<RiderCategoryPreset[]>([])
+  // Which chips are currently toggled on — this IS the ride's stored
+  // category tagging now, so Edit mode loads it straight from
+  // ride.categoryIds instead of always starting empty.
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([])
+  const [savedCategoryIds, setSavedCategoryIds] = useState<number[]>([])
+
+  useEffect(() => {
+    riderCategoryApi.getAll()
+      .then(res => {
+        const list: RiderCategoryPreset[] = res.data?.data ?? res.data ?? []
+        setCategoryPresets(list)
+      })
+      .catch(() => { /* quick-select chips just won't show */ })
+  }, [])
+
+  // "All Visitors" = ids [] → clears every restriction field. One or more
+  // categories selected → union of their ranges (lowest min, highest max)
+  // so a ride open to "Teens & Adults" admits anyone either range covers.
+  const applyCategorySelection = (ids: number[]) => {
+    if (ids.length === 0) {
+      setForm(f => ({
+        ...f,
+        minHeightCm: '', maxHeightCm: '',
+        minAgeYears: '', maxAgeYears: '',
+        minWeightKg: '', maxWeightKg: '',
+      }))
+      return
+    }
+    const selected = categoryPresets.filter(c => ids.includes(c.id))
+    if (selected.length === 0) return
+    setForm(f => ({
+      ...f,
+      minAgeYears: Math.min(...selected.map(c => c.minAgeYears)),
+      maxAgeYears: Math.max(...selected.map(c => c.maxAgeYears)),
+      minHeightCm: Math.min(...selected.map(c => c.minHeightCm)),
+      maxHeightCm: Math.max(...selected.map(c => c.maxHeightCm)),
+      minWeightKg: Math.min(...selected.map(c => c.minWeightKg)),
+      maxWeightKg: Math.max(...selected.map(c => c.maxWeightKg)),
+    }))
+  }
+
+  const toggleCategoryChip = (id: number) => {
+    setSelectedCategoryIds(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      applyCategorySelection(next)
+      return next
+    })
+  }
+
+  // ✅ CHANGED — once Rider Categories are selected, none of Min/Max
+  // height, age, or weight can be fine-tuned into a value that would
+  // silently exclude one of the selected categories. E.g. Kid+Teen+Adult
+  // selected (ages 1–12 / 13–17 / 18–100): a Max age of 13 technically sits
+  // inside the overall 1–100 envelope, but it excludes every Adult (who
+  // starts at 18) — nobody 18+ could ever satisfy "age ≤ 13", making the
+  // Adult selection meaningless. Same logic applies to height and weight.
+  // So each field gets its OWN tighter floor/ceiling instead of sharing one
+  // envelope:
+  //   • The Min field must stay ≤ the smallest selected category's max (so
+  //     it doesn't already exclude that category) → minCeiling = min(maxes)
+  //   • The Max field must stay ≥ the largest selected category's min (so
+  //     the "highest-starting" category is still reachable) → maxFloor = max(mins)
+  // Both fields still allow the full envelope on their other side
+  // (minFloor = min of mins, maxCeiling = max of maxes). No category
+  // selected (General Admission) → governed only by the broader Attraction
+  // Validation Settings bounds, same as before.
+  const selectedFieldBounds = (getMin: (c: RiderCategoryPreset) => number, getMax: (c: RiderCategoryPreset) => number) => {
+    if (selectedCategoryIds.length === 0) return null
+    const selected = categoryPresets.filter(c => selectedCategoryIds.includes(c.id))
+    if (selected.length === 0) return null
+    const mins = selected.map(getMin)
+    const maxs = selected.map(getMax)
+    return {
+      minFloor: Math.min(...mins),
+      minCeiling: Math.min(...maxs),
+      maxFloor: Math.max(...mins),
+      maxCeiling: Math.max(...maxs),
+      label: selected.map(c => c.name).join('/'),
+    }
+  }
+
+  const selectedAgeBounds = selectedFieldBounds(c => c.minAgeYears, c => c.maxAgeYears)
+  const selectedHeightBounds = selectedFieldBounds(c => c.minHeightCm, c => c.maxHeightCm)
+  const selectedWeightBounds = selectedFieldBounds(c => c.minWeightKg, c => c.maxWeightKg)
+
+  const selectAllVisitorsChip = () => {
+    setSelectedCategoryIds([])
+    applyCategorySelection([])
+  }
+
+  const categoryChipIcon = (name: string) =>
+    name === 'Kid' ? Baby : name === 'Teen' ? Backpack : Briefcase
+
   const getImageUrl = (path?: string) => {
     if (!path) return null
     if (path.startsWith('http')) return path
@@ -334,14 +451,23 @@ export default function AdminRidesPage() {
 
   const openCreate = () => {
     setEditRide(null); setForm({ ...emptyForm }); setSavedForm({ ...emptyForm })
-    setImageFile(null); setImagePreview(''); setModalOpen(true)
+    setImageFile(null); setImagePreview('')
+    setSelectedCategoryIds([]); setSavedCategoryIds([])
+    setModalOpen(true)
   }
 
-  // ✅ NEW — Save button stays disabled until something actually differs
-  // from the loaded ride (or, in Create mode, is always considered
+  // ✅ CHANGED — Save button stays disabled until something actually
+  // differs from the loaded ride (or, in Create mode, is always considered
   // "changed" since there's no original to compare against). A newly
-  // picked image file always counts as a change.
-  const hasFormChanges = !editRide || imageFile !== null ||
+  // picked image file always counts as a change. Now also compares the
+  // selected category chips against what was loaded, since those are a
+  // real saved field now, not just a pre-fill helper.
+  const categoryIdsChanged = () => {
+    const a = [...selectedCategoryIds].sort()
+    const b = [...savedCategoryIds].sort()
+    return a.length !== b.length || a.some((id, i) => id !== b[i])
+  }
+  const hasFormChanges = !editRide || imageFile !== null || categoryIdsChanged() ||
     (Object.keys(form) as (keyof typeof form)[]).some(key => String(form[key]) !== String(savedForm[key]))
 
   const openEdit = (ride: Ride) => {
@@ -363,6 +489,10 @@ export default function AdminRidesPage() {
     setSavedForm({ ...loaded })
     setImageFile(null)
     setImagePreview(ride.imagePath ? getImageUrl(ride.imagePath)! : '')
+    // ✅ CHANGED — categories are the ride's real saved tagging now, so
+    // Edit mode loads whatever this ride is actually tagged with.
+    setSelectedCategoryIds(ride.categoryIds ?? [])
+    setSavedCategoryIds(ride.categoryIds ?? [])
     setModalOpen(true)
   }
 
@@ -417,23 +547,46 @@ export default function AdminRidesPage() {
     // ✅ CHANGED — validation errors now surface as a toast only (no more
     // inline red banner in the modal), per request.
     const fail = (msg: string) => { toast.error(msg); return true }
-    if (form.minHeightCm !== '' && (Number(form.minHeightCm) < bounds.minHeightFloorCm || Number(form.minHeightCm) > bounds.minHeightCeilingCm)) {
-      if (fail(`Minimum height must be between ${bounds.minHeightFloorCm} and ${bounds.minHeightCeilingCm} cm.`)) return
+
+    // ✅ CHANGED — once Rider Categories are selected, Min/Max height, age,
+    // and weight each get their own tighter floor/ceiling so neither side
+    // can quietly exclude one of the selected categories (see
+    // selectedFieldBounds above for why) — matches the live check on the
+    // fields below.
+    const minHeightFloor = selectedHeightBounds ? selectedHeightBounds.minFloor : bounds.minHeightFloorCm
+    const minHeightCeiling = selectedHeightBounds ? selectedHeightBounds.minCeiling : bounds.minHeightCeilingCm
+    const maxHeightFloor = selectedHeightBounds ? selectedHeightBounds.maxFloor : bounds.maxHeightFloorCm
+    const maxHeightCeiling = selectedHeightBounds ? selectedHeightBounds.maxCeiling : bounds.maxHeightCeilingCm
+    const heightRangeSuffix = selectedHeightBounds ? ` (${selectedHeightBounds.label} range)` : ''
+    if (form.minHeightCm !== '' && (Number(form.minHeightCm) < minHeightFloor || Number(form.minHeightCm) > minHeightCeiling)) {
+      if (fail(`Minimum height must be between ${minHeightFloor} and ${minHeightCeiling}${heightRangeSuffix} cm.`)) return
     }
-    if (form.maxHeightCm !== '' && (Number(form.maxHeightCm) < bounds.maxHeightFloorCm || Number(form.maxHeightCm) > bounds.maxHeightCeilingCm)) {
-      if (fail(`Maximum height must be between ${bounds.maxHeightFloorCm} and ${bounds.maxHeightCeilingCm} cm.`)) return
+    if (form.maxHeightCm !== '' && (Number(form.maxHeightCm) < maxHeightFloor || Number(form.maxHeightCm) > maxHeightCeiling)) {
+      if (fail(`Maximum height must be between ${maxHeightFloor} and ${maxHeightCeiling}${heightRangeSuffix} cm.`)) return
     }
-    if (form.minAgeYears !== '' && (Number(form.minAgeYears) < bounds.minAgeFloorYears || Number(form.minAgeYears) > bounds.minAgeCeilingYears)) {
-      if (fail(`Minimum age must be between ${bounds.minAgeFloorYears} and ${bounds.minAgeCeilingYears} years.`)) return
+
+    const minAgeFloor = selectedAgeBounds ? selectedAgeBounds.minFloor : bounds.minAgeFloorYears
+    const minAgeCeiling = selectedAgeBounds ? selectedAgeBounds.minCeiling : bounds.minAgeCeilingYears
+    const maxAgeFloor = selectedAgeBounds ? selectedAgeBounds.maxFloor : bounds.maxAgeFloorYears
+    const maxAgeCeiling = selectedAgeBounds ? selectedAgeBounds.maxCeiling : bounds.maxAgeCeilingYears
+    const ageRangeSuffix = selectedAgeBounds ? ` (${selectedAgeBounds.label} range)` : ''
+    if (form.minAgeYears !== '' && (Number(form.minAgeYears) < minAgeFloor || Number(form.minAgeYears) > minAgeCeiling)) {
+      if (fail(`Minimum age must be between ${minAgeFloor} and ${minAgeCeiling}${ageRangeSuffix}.`)) return
     }
-    if (form.maxAgeYears !== '' && (Number(form.maxAgeYears) < bounds.maxAgeFloorYears || Number(form.maxAgeYears) > bounds.maxAgeCeilingYears)) {
-      if (fail(`Maximum age must be between ${bounds.maxAgeFloorYears} and ${bounds.maxAgeCeilingYears} years.`)) return
+    if (form.maxAgeYears !== '' && (Number(form.maxAgeYears) < maxAgeFloor || Number(form.maxAgeYears) > maxAgeCeiling)) {
+      if (fail(`Maximum age must be between ${maxAgeFloor} and ${maxAgeCeiling}${ageRangeSuffix}.`)) return
     }
-    if (form.minWeightKg !== '' && (Number(form.minWeightKg) < bounds.minWeightFloorKg || Number(form.minWeightKg) > bounds.minWeightCeilingKg)) {
-      if (fail(`Minimum weight must be between ${bounds.minWeightFloorKg} and ${bounds.minWeightCeilingKg} kg.`)) return
+
+    const minWeightFloor = selectedWeightBounds ? selectedWeightBounds.minFloor : bounds.minWeightFloorKg
+    const minWeightCeiling = selectedWeightBounds ? selectedWeightBounds.minCeiling : bounds.minWeightCeilingKg
+    const maxWeightFloor = selectedWeightBounds ? selectedWeightBounds.maxFloor : bounds.maxWeightFloorKg
+    const maxWeightCeiling = selectedWeightBounds ? selectedWeightBounds.maxCeiling : bounds.maxWeightCeilingKg
+    const weightRangeSuffix = selectedWeightBounds ? ` (${selectedWeightBounds.label} range)` : ''
+    if (form.minWeightKg !== '' && (Number(form.minWeightKg) < minWeightFloor || Number(form.minWeightKg) > minWeightCeiling)) {
+      if (fail(`Minimum weight must be between ${minWeightFloor} and ${minWeightCeiling}${weightRangeSuffix} kg.`)) return
     }
-    if (form.maxWeightKg !== '' && (Number(form.maxWeightKg) < bounds.maxWeightFloorKg || Number(form.maxWeightKg) > bounds.maxWeightCeilingKg)) {
-      if (fail(`Maximum weight must be between ${bounds.maxWeightFloorKg} and ${bounds.maxWeightCeilingKg} kg.`)) return
+    if (form.maxWeightKg !== '' && (Number(form.maxWeightKg) < maxWeightFloor || Number(form.maxWeightKg) > maxWeightCeiling)) {
+      if (fail(`Maximum weight must be between ${maxWeightFloor} and ${maxWeightCeiling}${weightRangeSuffix} kg.`)) return
     }
     // ✅ CHANGED — sanity-check the restriction ranges before submitting.
     // Was `>` only, which let Min == Max slip through (e.g. Min age 10,
@@ -465,6 +618,10 @@ export default function AdminRidesPage() {
       if (form.maxAgeYears !== '' && form.maxAgeYears != null) fd.append('maxAgeYears', String(form.maxAgeYears))
       if (form.minWeightKg !== '' && form.minWeightKg != null) fd.append('minWeightKg', String(form.minWeightKg))
       if (form.maxWeightKg !== '' && form.maxWeightKg != null) fd.append('maxWeightKg', String(form.maxWeightKg))
+      // ✅ NEW — this ride's real, saved Kid/Teen/Adult tagging. Repeated
+      // form fields, same pattern the backend already expects for RideIds
+      // on Attraction Bundles. Omitted entirely = "All Visitors".
+      selectedCategoryIds.forEach(id => fd.append('categoryIds', String(id)))
       if (imageFile) fd.append('file', imageFile)
 
       if (editRide) {
@@ -657,6 +814,24 @@ export default function AdminRidesPage() {
                       </div>
                     )}
 
+                    {/* ✅ NEW — this ride's real, saved Kid/Teen/Adult
+                        tagging (separate row from the height/age/weight
+                        pills above, since it's a different kind of fact —
+                        "who this is FOR" vs "what's actually enforced"). */}
+                    {ride.categoryNames && ride.categoryNames.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                        {ride.categoryNames.map((name, i) => {
+                          const Icon = categoryChipIcon(name)
+                          return (
+                            <span key={i} className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1 cursor-default">
+                              <Icon className="w-3 h-3" />
+                              {name}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+
                     {/* Stats row */}
                     <div className="flex items-center justify-between mb-4">
                       <div className="text-[13px] font-bold text-emerald-600">₱{fmt(ride.price)}</div>
@@ -838,63 +1013,205 @@ export default function AdminRidesPage() {
                 </div>
               </div>
 
+              {/* ✅ CHANGED — Kid/Teen/Adult quick-select, pulled from Admin >
+                  Settings > Rider Categories. This IS the ride's real saved
+                  category tagging now (used to filter which rides can join
+                  a category-restricted Attraction Bundle) — picking one or
+                  more chips also fills the Height/Age/Weight fields below
+                  with the union of the selected categories' ranges (lowest
+                  min, highest max), which stay editable afterward. "All
+                  Visitors" clears both — a ride is either open to everyone
+                  or tagged with a combination of categories. */}
+              {categoryPresets.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Who can ride?
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAllVisitorsChip}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                        selectedCategoryIds.length === 0
+                          ? 'bg-green-600 border-green-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      General Admission
+                    </button>
+
+                    {categoryPresets.map(cat => {
+                      const Icon = categoryChipIcon(cat.name)
+                      const active = selectedCategoryIds.includes(cat.id)
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => toggleCategoryChip(cat.id)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                            active
+                              ? 'bg-green-600 border-green-600 text-white'
+                              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                          {cat.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    Fills in the fields below — you can still fine-tune them manually.
+                  </p>
+                </div>
+              )}
+
               {/* ✅ CHANGED — height is now an optional min-max range (e.g.
                   100–180) instead of just a floor. Leave either side blank
                   for an open-ended range ("100cm and up", "up to 130cm", etc). */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Min. height (cm)</label>
-                  <input type="number" min="0" value={form.minHeightCm}
-                    onChange={e => setForm({...form, minHeightCm: e.target.value})}
-                    placeholder="No restriction"
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Max. height (cm)</label>
-                  <input type="number" min="0" value={form.maxHeightCm}
-                    onChange={e => setForm({...form, maxHeightCm: e.target.value})}
-                    placeholder="No restriction"
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
-                </div>
-              </div>
+              {(() => {
+                // ✅ CHANGED — same category-aware tightening as age: Min
+                // height can't exceed the smallest selected category's max
+                // height, and Max height can't fall below the largest
+                // selected category's min height, so a selection can't
+                // silently exclude one of its own categories.
+                const minHeightFloor = selectedHeightBounds ? selectedHeightBounds.minFloor : bounds.minHeightFloorCm
+                const minHeightCeiling = selectedHeightBounds ? selectedHeightBounds.minCeiling : bounds.minHeightCeilingCm
+                const maxHeightFloor = selectedHeightBounds ? selectedHeightBounds.maxFloor : bounds.maxHeightFloorCm
+                const maxHeightCeiling = selectedHeightBounds ? selectedHeightBounds.maxCeiling : bounds.maxHeightCeilingCm
+                const minHeightErr = fieldRangeError(form.minHeightCm, minHeightFloor, minHeightCeiling, selectedHeightBounds?.label)
+                const maxHeightErr = fieldRangeError(form.maxHeightCm, maxHeightFloor, maxHeightCeiling, selectedHeightBounds?.label)
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Min. height (cm)</label>
+                      <input type="number"
+                        min={minHeightFloor} max={minHeightCeiling}
+                        value={form.minHeightCm}
+                        onChange={e => setForm({...form, minHeightCm: e.target.value})}
+                        placeholder="No restriction"
+                        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                          minHeightErr ? 'border-red-400 focus:ring-red-200' : 'border-gray-300 focus:ring-green-300'
+                        }`} />
+                      {minHeightErr && (
+                        <p className="text-xs text-red-500 mt-1">{minHeightErr}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Max. height (cm)</label>
+                      <input type="number"
+                        min={maxHeightFloor} max={maxHeightCeiling}
+                        value={form.maxHeightCm}
+                        onChange={e => setForm({...form, maxHeightCm: e.target.value})}
+                        placeholder="No restriction"
+                        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                          maxHeightErr ? 'border-red-400 focus:ring-red-200' : 'border-gray-300 focus:ring-green-300'
+                        }`} />
+                      {maxHeightErr && (
+                        <p className="text-xs text-red-500 mt-1">{maxHeightErr}</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* ✅ CHANGED — age is now an optional min-max range (e.g. 24–50)
                   instead of just a floor. Leave either side blank for an
                   open-ended range ("18 and up", "up to 12", etc). */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Min. age (years)</label>
-                  <input type="number" min="0" value={form.minAgeYears}
-                    onChange={e => setForm({...form, minAgeYears: e.target.value})}
-                    placeholder="No restriction"
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Max. age (years)</label>
-                  <input type="number" min="0" value={form.maxAgeYears}
-                    onChange={e => setForm({...form, maxAgeYears: e.target.value})}
-                    placeholder="No restriction"
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
-                </div>
-              </div>
+              {(() => {
+                // ✅ CHANGED — Min age and Max age now each get their own
+                // floor/ceiling (see selectedAgeBounds above): Min age can't
+                // exceed the smallest selected category's max, and Max age
+                // can't fall below the largest selected category's min —
+                // otherwise a selection like Kid+Teen+Adult could silently
+                // end up excluding Adult (e.g. Max age = 13, but Adult
+                // starts at 18).
+                const minAgeFloor = selectedAgeBounds ? selectedAgeBounds.minFloor : bounds.minAgeFloorYears
+                const minAgeCeiling = selectedAgeBounds ? selectedAgeBounds.minCeiling : bounds.minAgeCeilingYears
+                const maxAgeFloor = selectedAgeBounds ? selectedAgeBounds.maxFloor : bounds.maxAgeFloorYears
+                const maxAgeCeiling = selectedAgeBounds ? selectedAgeBounds.maxCeiling : bounds.maxAgeCeilingYears
+                const minAgeErr = fieldRangeError(form.minAgeYears, minAgeFloor, minAgeCeiling, selectedAgeBounds?.label)
+                const maxAgeErr = fieldRangeError(form.maxAgeYears, maxAgeFloor, maxAgeCeiling, selectedAgeBounds?.label)
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Min. age (years)</label>
+                      <input type="number"
+                        min={minAgeFloor} max={minAgeCeiling}
+                        value={form.minAgeYears}
+                        onChange={e => setForm({...form, minAgeYears: e.target.value})}
+                        placeholder="No restriction"
+                        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                          minAgeErr ? 'border-red-400 focus:ring-red-200' : 'border-gray-300 focus:ring-green-300'
+                        }`} />
+                      {minAgeErr && (
+                        <p className="text-xs text-red-500 mt-1">{minAgeErr}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Max. age (years)</label>
+                      <input type="number"
+                        min={maxAgeFloor} max={maxAgeCeiling}
+                        value={form.maxAgeYears}
+                        onChange={e => setForm({...form, maxAgeYears: e.target.value})}
+                        placeholder="No restriction"
+                        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                          maxAgeErr ? 'border-red-400 focus:ring-red-200' : 'border-gray-300 focus:ring-green-300'
+                        }`} />
+                      {maxAgeErr && (
+                        <p className="text-xs text-red-500 mt-1">{maxAgeErr}</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* ✅ NEW — optional weight range restriction, same min/max pattern as age. */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Min. weight (kg)</label>
-                  <input type="number" min="0" value={form.minWeightKg}
-                    onChange={e => setForm({...form, minWeightKg: e.target.value})}
-                    placeholder="No restriction"
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Max. weight (kg)</label>
-                  <input type="number" min="0" value={form.maxWeightKg}
-                    onChange={e => setForm({...form, maxWeightKg: e.target.value})}
-                    placeholder="No restriction"
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-300" />
-                </div>
-              </div>
+              {(() => {
+                // ✅ CHANGED — same category-aware tightening as age/height:
+                // Min weight can't exceed the smallest selected category's
+                // max weight, and Max weight can't fall below the largest
+                // selected category's min weight.
+                const minWeightFloor = selectedWeightBounds ? selectedWeightBounds.minFloor : bounds.minWeightFloorKg
+                const minWeightCeiling = selectedWeightBounds ? selectedWeightBounds.minCeiling : bounds.minWeightCeilingKg
+                const maxWeightFloor = selectedWeightBounds ? selectedWeightBounds.maxFloor : bounds.maxWeightFloorKg
+                const maxWeightCeiling = selectedWeightBounds ? selectedWeightBounds.maxCeiling : bounds.maxWeightCeilingKg
+                const minWeightErr = fieldRangeError(form.minWeightKg, minWeightFloor, minWeightCeiling, selectedWeightBounds?.label)
+                const maxWeightErr = fieldRangeError(form.maxWeightKg, maxWeightFloor, maxWeightCeiling, selectedWeightBounds?.label)
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Min. weight (kg)</label>
+                      <input type="number"
+                        min={minWeightFloor} max={minWeightCeiling}
+                        value={form.minWeightKg}
+                        onChange={e => setForm({...form, minWeightKg: e.target.value})}
+                        placeholder="No restriction"
+                        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                          minWeightErr ? 'border-red-400 focus:ring-red-200' : 'border-gray-300 focus:ring-green-300'
+                        }`} />
+                      {minWeightErr && (
+                        <p className="text-xs text-red-500 mt-1">{minWeightErr}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Max. weight (kg)</label>
+                      <input type="number"
+                        min={maxWeightFloor} max={maxWeightCeiling}
+                        value={form.maxWeightKg}
+                        onChange={e => setForm({...form, maxWeightKg: e.target.value})}
+                        placeholder="No restriction"
+                        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                          maxWeightErr ? 'border-red-400 focus:ring-red-200' : 'border-gray-300 focus:ring-green-300'
+                        }`} />
+                      {maxWeightErr && (
+                        <p className="text-xs text-red-500 mt-1">{maxWeightErr}</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
               <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
                 <button type="button" onClick={() => setModalOpen(false)}

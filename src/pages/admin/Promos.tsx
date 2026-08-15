@@ -6,10 +6,11 @@ import {
   ChevronLeft, ChevronRight, ZoomIn, X, Loader2, ChevronDown,
   Tag, Calendar, FerrisWheel, Check, Clock, AlarmClock, CalendarCheck,
   CalendarDays, Layers, CheckCheck, Users, Star, Ruler, Cake, Weight,
-  Type, Banknote, SortAsc, SortDesc, Filter
+  Type, Banknote, SortAsc, SortDesc, Filter,
+  Baby, Backpack, Briefcase, Globe
 } from 'lucide-react'
-import type { RidePromo, Ride, Schedule, PaginationRequest, PromoRideItem } from '../../types'
-import api, { promoApi } from '../../services/api'
+import type { RidePromo, Ride, Schedule, PaginationRequest, PromoRideItem, RiderCategoryPreset } from '../../types'
+import api, { promoApi, riderCategoryApi } from '../../services/api'
 import toast from 'react-hot-toast'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
@@ -749,6 +750,10 @@ const emptyForm = {
   // ✅ NEW — the admin locks in one schedule per selected ride right here,
   // at promo-creation time (rideId -> scheduleId).
   scheduleByRide: {} as Record<number, number>,
+  // ✅ NEW — which Rider Category preset(s) (Kid/Teen/Adult) this BUNDLE
+  // itself is tagged with. Empty = "All Ages". When set, only rides sharing
+  // at least one of these categories are selectable below.
+  categoryIds: [] as number[],
 }
 
 export default function AdminPromosPage() {
@@ -766,6 +771,10 @@ export default function AdminPromosPage() {
 
   const [allRides, setAllRides] = useState<Ride[]>([])
   const [allSchedules, setAllSchedules] = useState<Schedule[]>([])
+  // ✅ NEW — Kid/Teen/Adult rider category presets (Admin > Settings), used
+  // to tag this bundle itself and to filter which rides can join it (a
+  // Kids bundle can only include rides tagged Kids).
+  const [categoryPresets, setCategoryPresets] = useState<RiderCategoryPreset[]>([])
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editPromo, setEditPromo] = useState<RidePromo | null>(null)
@@ -812,6 +821,14 @@ export default function AdminPromosPage() {
     } catch { toast.error('Failed to load schedules list.') }
   }
 
+  const fetchCategoryPresets = async () => {
+    try {
+      const res = await riderCategoryApi.getAll()
+      const list: RiderCategoryPreset[] = res.data?.data ?? res.data ?? []
+      setCategoryPresets(list)
+    } catch { /* category chips just won't show */ }
+  }
+
   // Schedules selectable for a given ride: open, with slots left, on the
   // exact same date as the promo (a promo is single-day, so every ride in it
   // must happen that day), AND tagged Type = Promo — Regular schedules are
@@ -830,8 +847,16 @@ export default function AdminPromosPage() {
   // ✅ NEW — only pop up rides that actually have a schedule on the chosen
   // promo date. Previously every active ride was listed regardless of the
   // date, so checking one on a day with nothing scheduled was a dead end.
+  // ✅ CHANGED — also filtered by this bundle's own category tagging: once
+  // the admin picks a category (e.g. Kids) for the bundle, only rides
+  // tagged with at least one of the same categories are selectable — not
+  // Adult-tagged rides, and not "All Visitors" rides either.
   const ridesForPromoDate = form.promoDate
-    ? allRides.filter(r => schedulesForRide(r.id).length > 0)
+    ? allRides
+        .filter(r => schedulesForRide(r.id).length > 0)
+        .filter(r =>
+          form.categoryIds.length === 0 ||
+          (r.categoryIds ?? []).some(cid => form.categoryIds.includes(cid)))
     : []
 
   const fetchPromos = async () => {
@@ -856,7 +881,7 @@ export default function AdminPromosPage() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchRides(); fetchSchedules() }, [])
+  useEffect(() => { fetchRides(); fetchSchedules(); fetchCategoryPresets() }, [])
   useEffect(() => { fetchPromos() }, [params, statusFilter, dateFrom, dateTo])
 
   // ✅ FIXED (again) — was window.scrollTo(), a no-op since AdminLayout's
@@ -889,6 +914,7 @@ export default function AdminPromosPage() {
       promoDate: promo.promoDate?.slice(0, 10) ?? '',
       rideIds: promo.rides.map(r => r.rideId),
       scheduleByRide: Object.fromEntries(promo.rides.map(r => [r.rideId, r.scheduleId])),
+      categoryIds: promo.categoryIds ?? [],
     }
     setForm({ ...loaded })
     setSavedForm({ ...loaded })
@@ -911,7 +937,8 @@ export default function AdminPromosPage() {
     String(form.price) !== String(savedForm.price) ||
     form.promoDate !== savedForm.promoDate ||
     JSON.stringify([...form.rideIds].sort((a, b) => a - b)) !== JSON.stringify([...savedForm.rideIds].sort((a, b) => a - b)) ||
-    sortedEntries(form.scheduleByRide) !== sortedEntries(savedForm.scheduleByRide)
+    sortedEntries(form.scheduleByRide) !== sortedEntries(savedForm.scheduleByRide) ||
+    JSON.stringify([...form.categoryIds].sort((a, b) => a - b)) !== JSON.stringify([...savedForm.categoryIds].sort((a, b) => a - b))
 
   // Changing the promo date invalidates any already-picked rides/schedules
   // that no longer fall on that day — clear them so the form can't silently
@@ -962,6 +989,37 @@ export default function AdminPromosPage() {
     })
   }
 
+  // ✅ NEW — toggling this bundle's own Kid/Teen/Adult tagging. Any
+  // already-selected ride that no longer shares a category with the new
+  // selection gets dropped from the bundle (same "clear what's now
+  // invalid" pattern as changing the promo date above) — otherwise a Kids
+  // bundle could silently keep an Adult ride it picked up before the
+  // category was set.
+  const toggleCategoryChip = (id: number) => {
+    setForm(f => {
+      const categoryIds = f.categoryIds.includes(id)
+        ? f.categoryIds.filter(x => x !== id)
+        : [...f.categoryIds, id]
+
+      if (categoryIds.length === 0) return { ...f, categoryIds }
+
+      const rideIds = f.rideIds.filter(rid => {
+        const ride = allRides.find(r => r.id === rid)
+        return ride && (ride.categoryIds ?? []).some(cid => categoryIds.includes(cid))
+      })
+      const scheduleByRide = Object.fromEntries(rideIds.map(rid => [rid, f.scheduleByRide[rid]]))
+
+      return { ...f, categoryIds, rideIds, scheduleByRide }
+    })
+  }
+
+  const selectAllAgesChip = () => {
+    setForm(f => ({ ...f, categoryIds: [] }))
+  }
+
+  const categoryChipIcon = (name: string) =>
+    name === 'Kid' ? Baby : name === 'Teen' ? Backpack : Briefcase
+
   // ✅ CHANGED — clicking the already-selected schedule again now toggles it
   // back off (radio-style select/deselect), instead of being stuck selected.
   const setRideSchedule = (rideId: number, scheduleId: number) => {
@@ -999,6 +1057,8 @@ export default function AdminPromosPage() {
       // repeated form fields (matches CreateRidePromoRequest's List<int> binding).
       form.rideIds.forEach(id => fd.append('rideIds', String(id)))
       form.rideIds.forEach(id => fd.append('scheduleIds', String(form.scheduleByRide[id])))
+      // ✅ NEW — this bundle's own Kid/Teen/Adult tagging. Empty = "All Ages".
+      form.categoryIds.forEach(id => fd.append('categoryIds', String(id)))
       if (imageFile) fd.append('file', imageFile)
 
       if (editPromo) {
@@ -1203,6 +1263,21 @@ export default function AdminPromosPage() {
                       )
                     })()}
 
+                    {/* ✅ NEW — this bundle's own Kid/Teen/Adult tagging. */}
+                    {promo.categoryNames && promo.categoryNames.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                        {promo.categoryNames.map((name, i) => {
+                          const Icon = categoryChipIcon(name)
+                          return (
+                            <span key={i} className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1">
+                              <Icon className="w-3 h-3" />
+                              {name}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-end gap-2">
                       {promo.isDeleted ? (
                         pastDate ? (
@@ -1363,6 +1438,58 @@ export default function AdminPromosPage() {
                 Bundles run for a single day. Every attraction bundled below must have a schedule locked on this exact date.
               </p>
 
+              {/* ✅ NEW — Kid/Teen/Adult quick-select for the BUNDLE itself,
+                  pulled from Admin > Settings > Rider Categories. Once set,
+                  the attraction picker below only shows rides tagged with
+                  a matching category — a Kids bundle can't pick up an
+                  Adult-only or All Visitors ride. */}
+              {categoryPresets.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Who is this bundle for?
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAllAgesChip}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                        form.categoryIds.length === 0
+                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      General Admission
+                    </button>
+
+                    {categoryPresets.map(cat => {
+                      const Icon = categoryChipIcon(cat.name)
+                      const active = form.categoryIds.includes(cat.id)
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => toggleCategoryChip(cat.id)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                            active
+                              ? 'bg-emerald-600 border-emerald-600 text-white'
+                              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                          {cat.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {form.categoryIds.length > 0 && (
+                    <p className="text-xs text-gray-400 mt-1.5">
+                      Only attractions tagged with a matching category can be added below.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Attractions included * <span className="text-gray-400 font-normal">(select at least two, and lock a schedule for each)</span>
@@ -1376,8 +1503,13 @@ export default function AdminPromosPage() {
                     <div className="border border-gray-200 rounded-lg max-h-80 overflow-y-auto divide-y divide-gray-100">
                       {ridesForPromoDate.length === 0 ? (
                         <div className="text-xs text-amber-600 bg-amber-50 p-3">
-                          No attractions have an open <strong>Attraction Bundle-type</strong> schedule on {fmtDate(form.promoDate)} yet — create one in
-                          Schedules first and set its Type to "Attraction Bundle".
+                          {form.categoryIds.length > 0 ? (
+                            <>No attractions tagged with a matching rider category have an open <strong>Attraction Bundle-type</strong> schedule
+                              on {fmtDate(form.promoDate)} — tag one in Admin &gt; Attractions, or clear the category above.</>
+                          ) : (
+                            <>No attractions have an open <strong>Attraction Bundle-type</strong> schedule on {fmtDate(form.promoDate)} yet — create one in
+                              Schedules first and set its Type to "Attraction Bundle".</>
+                          )}
                         </div>
                       ) : ridesForPromoDate.map(ride => {
                         const checked = form.rideIds.includes(ride.id)

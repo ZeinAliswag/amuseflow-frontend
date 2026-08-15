@@ -173,6 +173,16 @@ export const settingsApi = {
     api.put('/api/ridevalidationsettings', payload),
 }
 
+// ✅ NEW — the Kid/Teen/Adult rider category presets, backing the Settings
+// page's "Rider Categories" accordion section and Rides.tsx's quick-select.
+export const riderCategoryApi = {
+  getAll: () =>
+    api.get('/api/ridercategorypresets'),
+
+  update: (id: number, payload: Record<string, number>) =>
+    api.put(`/api/ridercategorypresets/${id}`, payload),
+}
+
 // ── Reports (admin-only rating analytics) ────────────────────────
 // Backs the Admin "Reports" page — monthly average-rating trend, scoped to
 // every Attraction, every Attraction Bundle, everything combined, or one

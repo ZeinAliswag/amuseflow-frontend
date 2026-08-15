@@ -5,7 +5,8 @@ import {
   Search, MapPin, ZoomIn, X, Loader2, ArrowLeft,
   UserCog, CalendarDays, AlarmClock,
   FerrisWheel, Tag, PackageCheck, Star, Ruler, Cake, Weight,
-  Filter, Banknote, SortAsc, SortDesc, Type, Maximize2, LayoutGrid
+  Filter, Banknote, SortAsc, SortDesc, Type, Maximize2, LayoutGrid,
+  Baby, Backpack, Briefcase
 } from 'lucide-react'
 import type { Booking, Ride, RidePromo, PromoRideItem, BookingPromoItem, PaginationRequest } from '../../types'
 import api, { promoApi, bookingApi, reviewApi } from '../../services/api'
@@ -14,6 +15,13 @@ import toast from 'react-hot-toast'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
 const fmt = (n: any) => Number(n ?? 0).toFixed(2)
+
+// ✅ NEW — Kid → Baby, Teen → Backpack, Adult → Briefcase, matching the
+// icons Admin > Attractions and Admin > Settings > Rider Categories use for
+// the same categories, so a visitor sees the same visual language.
+function categoryChipIcon(name: string) {
+  return name === 'Kid' ? Baby : name === 'Teen' ? Backpack : Briefcase
+}
 
 function getImageUrl(path?: string) {
   if (!path) return null
@@ -1911,6 +1919,22 @@ export function VisitorDashboard() {
                                   : ride.minWeightKg != null ? `${ride.minWeightKg}kg+` : `Up to ${ride.maxWeightKg}kg`}
                               </span>
                             )}
+                          </div>
+                        )}
+                        {/* ✅ NEW — Kid/Teen/Adult tagging, same badge style
+                            Admin > Attractions shows, so visitors see who
+                            this attraction is meant for at a glance. */}
+                        {ride.categoryNames && ride.categoryNames.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                            {ride.categoryNames.map((name, i) => {
+                              const Icon = categoryChipIcon(name)
+                              return (
+                                <span key={i} className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1 cursor-default">
+                                  <Icon className="w-3 h-3" />
+                                  {name}
+                                </span>
+                              )
+                            })}
                           </div>
                         )}
                         <button

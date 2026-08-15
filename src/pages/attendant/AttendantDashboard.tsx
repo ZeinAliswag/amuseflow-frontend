@@ -3,7 +3,8 @@ import {
   Scan, CheckCircle2, Calendar, Clock, Users, AlertCircle, XCircle,
   Wallet, Loader2, Ticket, ChevronRight, ChevronLeft, ChevronDown, Sparkles, ClipboardCheck,
 TrendingUp, X, ZoomIn, AlarmClock,
-  FerrisWheel, Tag, CalendarDays, Ruler, Cake, Weight
+  FerrisWheel, Tag, CalendarDays, Ruler, Cake, Weight,
+  Baby, Backpack, Briefcase
 } from 'lucide-react'
 import type { Schedule, Booking, PagedResponse, PaginationRequest } from '../../types'
 import api from '../../services/api'
@@ -15,6 +16,13 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const WEEKDAYS = ['Su','Mo','Tu','We','Th','Fr','Sa']
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
+
+// ✅ NEW — Kid → Baby, Teen → Backpack, Adult → Briefcase, same icons Admin
+// > Attractions and Admin > Settings > Rider Categories use for the same
+// categories.
+function categoryChipIcon(name: string) {
+  return name === 'Kid' ? Baby : name === 'Teen' ? Backpack : Briefcase
+}
 
 // ── Date-range filter helpers — same pattern as Admin Bookings/Promos/Logs ──
 const toISO = (d: Date) => {
@@ -1374,6 +1382,22 @@ export function AttendantDashboard() {
                                 : s.minWeightKg != null ? `${s.minWeightKg}kg+` : `Up to ${s.maxWeightKg}kg`}
                             </span>
                           )}
+                        </div>
+                      )}
+                      {/* ✅ NEW — Kid/Teen/Adult tagging, matching the
+                          restriction badges above in density (10px/1.5 padding)
+                          for this card's tighter layout. */}
+                      {s.categoryNames && s.categoryNames.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                          {s.categoryNames.map((name, i) => {
+                            const Icon = categoryChipIcon(name)
+                            return (
+                              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5">
+                                <Icon className="w-2.5 h-2.5" />
+                                {name}
+                              </span>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
