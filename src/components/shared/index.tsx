@@ -259,7 +259,7 @@ export function Pagination({
           <button
             key={p}
             onClick={() => onPage(p)}
-            className={`px-3 py-1 rounded text-sm font-medium transition-all
+            className={`px-3 py-1 rounded text-xs font-medium transition-all
               ${p === page
                 ? 'bg-primary-300 text-white'
                 : 'text-gray-600 hover:bg-gray-100'}`}

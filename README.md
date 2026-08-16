@@ -1,7 +1,7 @@
 # AmuseFlow — Frontend
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
 
@@ -10,7 +10,7 @@ React + TypeScript + Vite frontend for **AmuseFlow** — a theme park attraction
 ## Portals
 
 - **Visitor** — browse attractions and attraction bundles, book schedules, track bookings, leave reviews, receive real-time notifications
-- **Admin** — manage attractions, bundles, schedules, bookings, users, validation settings, and view system-wide activity logs and notifications
+- **Admin** — manage attractions, bundles, schedules, bookings, users, validation settings (including Kid/Teen/Adult rider category presets), generate ratings reports (PDF/Word export), and view system-wide activity logs and notifications
 - **Ride Attendant** — view assigned schedules, verify visitors, collect payment, and check guests in (bookings auto-complete once a schedule's window closes)
 
 ## Tech stack
@@ -20,6 +20,7 @@ React + TypeScript + Vite frontend for **AmuseFlow** — a theme park attraction
 - **Vite** for dev server and build
 - **Tailwind CSS** for styling, no component library
 - **react-hot-toast** for notifications, **lucide-react** for icons
+- **jspdf** + **html2canvas** and **docx** for exporting Admin reports as PDF/Word
 
 ## Getting started
 

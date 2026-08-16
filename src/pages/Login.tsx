@@ -1,10 +1,73 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Lock, Eye, EyeOff, Sparkles, Shield, Ticket, CreditCard, Phone, PartyPopper, UserPlus, CheckCircle2, Circle } from 'lucide-react'
+import { User, Lock, Eye, EyeOff, Sparkles, Shield, Ticket, CreditCard, Phone, PartyPopper, UserPlus, CheckCircle2, Circle, X } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { Spinner } from '../components/shared'
 import toast from 'react-hot-toast'
+
+// ✅ NEW — shared between the desktop right panel (always visible, lg+) and
+// the mobile/tablet slide-in drawer (opened on demand) below, so the two
+// never drift out of sync content-wise.
+const LOGIN_FEATURES = [
+  { icon: <Ticket className="w-4 h-4 text-rose-300" />, title: 'Book ride slots', sub: 'Reserve spots in advance. Skip the queue.' },
+  { icon: <Shield className="w-4 h-4 text-blue-300" />, title: 'Role-based access', sub: 'One login serves all three roles automatically.' },
+  { icon: <CreditCard className="w-4 h-4 text-amber-300" />, title: 'Pay at the ride', sub: 'Attendant collects payment on-site before boarding.' },
+]
+
+const LOGIN_ROLES = [
+  { dot: 'bg-emerald-400', name: 'Visitor', desc: 'Browse rides, book slots, cancel reservations.' },
+  { dot: 'bg-blue-400', name: 'Admin', desc: 'Manage rides, schedules, bookings, users and logs.' },
+  { dot: 'bg-amber-400', name: 'Ride Attendant', desc: 'Verify codes, collect payment, complete rides.' },
+]
+
+// ✅ NEW — the "why AmuseFlow" pitch (badge, heading, feature list, role
+// list). Rendered as-is inside the desktop panel, and again inside the
+// mobile/tablet drawer, so both stay pixel-identical without copy-pasting.
+function LoginInfoContent() {
+  return (
+    <>
+      <div className="inline-flex items-center gap-1.5 bg-white/15 text-white text-xs px-3 py-1.5 rounded-full border border-white/20 mb-6">
+        <Sparkles className="w-3.5 h-3.5" /> Welcome to the magic
+      </div>
+      <h2 className="text-3xl font-bold text-white mb-3 leading-tight">
+        Your adventure<br />starts here
+      </h2>
+      <p className="text-sm text-white/70 mb-8 leading-relaxed">
+        One login for all roles. Your username and password determine which portal you access.
+      </p>
+
+      {/* Feature list */}
+      <div className="space-y-4 mb-8">
+        {LOGIN_FEATURES.map(item => (
+          <div key={item.title} className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+              {item.icon}
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-white mb-0.5">{item.title}</div>
+              <div className="text-xs text-white/60">{item.sub}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Roles */}
+      <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">User roles</div>
+      <div className="space-y-2">
+        {LOGIN_ROLES.map(r => (
+          <div key={r.name} className="bg-white/10 border border-white/15 rounded-xl px-4 py-2.5 flex items-center gap-3">
+            <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${r.dot}`} />
+            <div>
+              <div className="text-xs font-semibold text-white">{r.name}</div>
+              <div className="text-[10px] text-white/55">{r.desc}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
 
 // Formats digits as the Filipino mobile style: 09XX XXX XXXX
 function formatPHMobile(raw: string) {
@@ -25,6 +88,10 @@ export default function Login() {
   const [showPw, setShowPw]   = useState(false)
   const [showPw2, setShowPw2] = useState(false)
   const [loading, setLoading] = useState(false)
+  // ✅ NEW — on mobile/tablet the rose "why AmuseFlow" panel doesn't fit
+  // beside the form, so instead of just hiding it outright it moves into a
+  // slide-in drawer the visitor can pull open on demand (see below).
+  const [infoOpen, setInfoOpen] = useState(false)
 
   const [username, setUsername]   = useState('')
   const [password, setPassword]   = useState('')
@@ -94,6 +161,15 @@ export default function Login() {
           <div className="text-xl font-bold text-gray-900">Glorious Fantasyland</div>
           <div className="text-xs text-gray-400 mt-0.5">AmuseFlow - Online Reservation System</div>
         </div>
+
+        {/* ✅ CHANGED — dropped the constant animate-ping ring (read as
+            distracting/nagging rather than inviting). The button now relies
+            on direct interaction feedback instead of an idle animation:
+            it grows slightly on hover and presses down on tap. */}
+        <button type="button" onClick={() => setInfoOpen(true)} aria-label="Discover AmuseFlow — roles & features"
+          className="lg:hidden fixed top-4 right-4 z-40 flex items-center justify-center w-11 h-11 rounded-full bg-gradient-to-br from-rose-400 to-rose-600 text-white shadow-lg hover:shadow-xl hover:scale-110 active:scale-95 transition-all">
+          <Sparkles className="w-5 h-5" />
+        </button>
 
         {/* Card */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6 sm:p-8 w-full max-w-sm shadow-sm">
@@ -275,7 +351,7 @@ export default function Login() {
         </div>
       </div>
 
-      {/* ── Right — info panel ─────────────────────────────── */}
+      {/* ── Right — info panel (desktop, lg+) ─────────────────────────── */}
       <div className="hidden lg:flex w-[42%] bg-gradient-to-br from-rose-400 via-rose-500 to-rose-700 p-10 flex-col justify-center relative overflow-hidden">
         {/* Decorative circles */}
         <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-white/5" />
@@ -283,52 +359,39 @@ export default function Login() {
         <div className="absolute top-1/2 right-0 w-40 h-40 rounded-full bg-white/5" />
 
         <div className="relative z-10">
-          <div className="inline-flex items-center gap-1.5 bg-white/15 text-white text-xs px-3 py-1.5 rounded-full border border-white/20 mb-6">
-            <Sparkles className="w-3.5 h-3.5" /> Welcome to the magic
-          </div>
-          <h2 className="text-3xl font-bold text-white mb-3 leading-tight">
-            Your adventure<br />starts here
-          </h2>
-          <p className="text-sm text-white/70 mb-8 leading-relaxed">
-            One login for all roles. Your username and password determine which portal you access.
-          </p>
+          <LoginInfoContent />
+        </div>
+      </div>
 
-          {/* Feature list */}
-          <div className="space-y-4 mb-8">
-            {[
-              { icon: <Ticket className="w-4 h-4 text-rose-300" />, title: 'Book ride slots', sub: 'Reserve spots in advance. Skip the queue.' },
-              { icon: <Shield className="w-4 h-4 text-blue-300" />,    title: 'Role-based access', sub: 'One login serves all three roles automatically.' },
-              { icon: <CreditCard className="w-4 h-4 text-amber-300" />, title: 'Pay at the ride', sub: 'Attendant collects payment on-site before boarding.' },
-            ].map(item => (
-              <div key={item.title} className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
-                  {item.icon}
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-white mb-0.5">{item.title}</div>
-                  <div className="text-xs text-white/60">{item.sub}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* ── Mobile/tablet — same content as a slide-in drawer, opened via
+          the "Discover AmuseFlow" banner above the login card. Backdrop
+          fades in, panel slides in from the right — both driven by
+          `infoOpen` via CSS transitions (kept mounted so the transition
+          actually animates instead of popping in/out). ── */}
+      <div
+        className={`lg:hidden fixed inset-0 z-50 bg-black/40 transition-opacity duration-300 ${
+          infoOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setInfoOpen(false)}
+      />
+      <div
+        role="dialog" aria-modal="true" aria-label="About AmuseFlow"
+        className={`lg:hidden fixed top-0 right-0 h-full w-full sm:w-[420px] z-50 bg-gradient-to-br from-rose-400 via-rose-500 to-rose-700 p-8 pt-16 overflow-y-auto shadow-2xl transition-transform duration-300 ease-out ${
+          infoOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Decorative circles, same as the desktop panel */}
+        <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-white/5" />
+        <div className="absolute -bottom-20 -left-20 w-80 h-80 rounded-full bg-white/5" />
+        <div className="absolute top-1/2 right-0 w-40 h-40 rounded-full bg-white/5" />
 
-          {/* Roles */}
-          <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">User roles</div>
-          <div className="space-y-2">
-            {[
-              { dot: 'bg-emerald-400', name: 'Visitor',        desc: 'Browse rides, book slots, cancel reservations.' },
-              { dot: 'bg-blue-400',    name: 'Admin',           desc: 'Manage rides, schedules, bookings, users and logs.' },
-              { dot: 'bg-amber-400',   name: 'Ride Attendant', desc: 'Verify codes, collect payment, complete rides.' },
-            ].map(r => (
-              <div key={r.name} className="bg-white/10 border border-white/15 rounded-xl px-4 py-2.5 flex items-center gap-3">
-                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${r.dot}`} />
-                <div>
-                  <div className="text-xs font-semibold text-white">{r.name}</div>
-                  <div className="text-[10px] text-white/55">{r.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+        <button type="button" onClick={() => setInfoOpen(false)} aria-label="Close"
+          className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors z-10">
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="relative z-10">
+          <LoginInfoContent />
         </div>
       </div>
     </div>

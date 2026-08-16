@@ -3,10 +3,11 @@ import {
   Scan, CheckCircle2, Calendar, Clock, Users, AlertCircle, XCircle,
   Wallet, Loader2, Ticket, ChevronRight, ChevronLeft, ChevronDown, Sparkles, ClipboardCheck,
 TrendingUp, X, ZoomIn, AlarmClock,
-  FerrisWheel, Tag, CalendarDays, Ruler, Cake, Weight
+  FerrisWheel, Tag, CalendarDays, Ruler, Cake, Weight,
+  Baby, Backpack, Briefcase
 } from 'lucide-react'
-import type { Schedule, Booking, PagedResponse, PaginationRequest } from '../../types'
-import api from '../../services/api'
+import type { Schedule, Booking, PagedResponse, PaginationRequest, RideValidationSettings } from '../../types'
+import api, { settingsApi } from '../../services/api'
 import {Badge } from '../../components/shared'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
@@ -15,6 +16,13 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const WEEKDAYS = ['Su','Mo','Tu','We','Th','Fr','Sa']
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
+
+// ✅ NEW — Kid → Baby, Teen → Backpack, Adult → Briefcase, same icons Admin
+// > Attractions and Admin > Settings > Rider Categories use for the same
+// categories.
+function categoryChipIcon(name: string) {
+  return name === 'Kid' ? Baby : name === 'Teen' ? Backpack : Briefcase
+}
 
 // ── Date-range filter helpers — same pattern as Admin Bookings/Promos/Logs ──
 const toISO = (d: Date) => {
@@ -698,6 +706,30 @@ export function AttendantDashboard() {
   // ref used to scroll down to the assigned-schedules card
   const schedulesSectionRef = useRef<HTMLDivElement>(null)
 
+  // ✅ NEW — Attraction Validation Settings' widest floor–ceiling range, used
+  // to default-display a General Admission ride's restriction badges (no
+  // rider category tag, nothing manually entered) instead of hiding them
+  // entirely, matching the read-only "General Admission" card Admin sees in
+  // Settings. Falls back to these hardcoded defaults if the fetch fails, so
+  // the badges just quietly stop showing rather than breaking the page.
+  const [bounds, setBounds] = useState<RideValidationSettings>({
+    minHeightFloorCm: 50, minHeightCeilingCm: 250,
+    maxHeightFloorCm: 50, maxHeightCeilingCm: 250,
+    minAgeFloorYears: 1, minAgeCeilingYears: 100,
+    maxAgeFloorYears: 1, maxAgeCeilingYears: 130,
+    minWeightFloorKg: 1, minWeightCeilingKg: 400,
+    maxWeightFloorKg: 1, maxWeightCeilingKg: 400,
+    updatedAt: '',
+  })
+  useEffect(() => {
+    settingsApi.getRideValidation()
+      .then(res => {
+        const data: RideValidationSettings = res.data?.data ?? res.data
+        if (data) setBounds(data)
+      })
+      .catch(() => { /* keep defaults */ })
+  }, [])
+
   // ✅ FIXED — this only ran once on mount/filter-change, so the assigned-
   // schedules list went stale the moment the attendant landed on the
   // dashboard. Now re-polls every 5s so a newly-assigned schedule shows up
@@ -1344,36 +1376,73 @@ export function AttendantDashboard() {
                       {/* ✅ NEW — same restriction badges shown on the ride/
                           bundle cards, so an attendant can see height/age/
                           weight requirements right in the assigned list
-                          without opening the roster. */}
-                      {(s.minHeightCm != null || s.maxHeightCm != null
-                        || s.minAgeYears != null || s.maxAgeYears != null
-                        || s.minWeightKg != null || s.maxWeightKg != null) && (
-                        <div className="flex items-center gap-1.5 flex-wrap mt-1.5"
-                          title="Every guest in the party must meet all of these to be let onto this ride">
-                          {(s.minHeightCm != null || s.maxHeightCm != null) && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-1.5 py-0.5">
-                              <Ruler className="w-2.5 h-2.5" />
-                              {s.minHeightCm != null && s.maxHeightCm != null
-                                ? `${s.minHeightCm}-${s.maxHeightCm}cm`
-                                : s.minHeightCm != null ? `${s.minHeightCm}cm+` : `Up to ${s.maxHeightCm}cm`}
-                            </span>
-                          )}
-                          {(s.minAgeYears != null || s.maxAgeYears != null) && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-1.5 py-0.5">
-                              <Cake className="w-2.5 h-2.5" />
-                              {s.minAgeYears != null && s.maxAgeYears != null
-                                ? `${s.minAgeYears}-${s.maxAgeYears}y`
-                                : s.minAgeYears != null ? `${s.minAgeYears}y+` : `Up to ${s.maxAgeYears}y`}
-                            </span>
-                          )}
-                          {(s.minWeightKg != null || s.maxWeightKg != null) && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-1.5 py-0.5">
-                              <Weight className="w-2.5 h-2.5" />
-                              {s.minWeightKg != null && s.maxWeightKg != null
-                                ? `${s.minWeightKg}-${s.maxWeightKg}kg`
-                                : s.minWeightKg != null ? `${s.minWeightKg}kg+` : `Up to ${s.maxWeightKg}kg`}
-                            </span>
-                          )}
+                          without opening the roster.
+                          ✅ NEW — a General Admission ride (no rider category
+                          tag) with nothing manually entered has null fields
+                          here, which used to hide the badges entirely and
+                          make it look unrestricted. It isn't — General
+                          Admission still enforces the widest range
+                          Attraction Validation Settings (`bounds`) allows —
+                          so each metric falls back to that floor–ceiling
+                          pair whenever the schedule's ride has no manual
+                          value of its own. */}
+                      {(() => {
+                        const isGeneralAdmission = !s.categoryNames || s.categoryNames.length === 0
+                        const heightMin = s.minHeightCm ?? (isGeneralAdmission ? bounds.minHeightFloorCm : null)
+                        const heightMax = s.maxHeightCm ?? (isGeneralAdmission ? bounds.maxHeightCeilingCm : null)
+                        const ageMin = s.minAgeYears ?? (isGeneralAdmission ? bounds.minAgeFloorYears : null)
+                        const ageMax = s.maxAgeYears ?? (isGeneralAdmission ? bounds.maxAgeCeilingYears : null)
+                        const weightMin = s.minWeightKg ?? (isGeneralAdmission ? bounds.minWeightFloorKg : null)
+                        const weightMax = s.maxWeightKg ?? (isGeneralAdmission ? bounds.maxWeightCeilingKg : null)
+
+                        if (heightMin == null && heightMax == null
+                          && ageMin == null && ageMax == null
+                          && weightMin == null && weightMax == null) return null
+
+                        return (
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1.5"
+                            title="Every guest in the party must meet all of these to be let onto this ride">
+                            {(heightMin != null || heightMax != null) && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-1.5 py-0.5">
+                                <Ruler className="w-2.5 h-2.5" />
+                                {heightMin != null && heightMax != null
+                                  ? `${heightMin}-${heightMax}cm`
+                                  : heightMin != null ? `${heightMin}cm+` : `Up to ${heightMax}cm`}
+                              </span>
+                            )}
+                            {(ageMin != null || ageMax != null) && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-1.5 py-0.5">
+                                <Cake className="w-2.5 h-2.5" />
+                                {ageMin != null && ageMax != null
+                                  ? `${ageMin}-${ageMax}y`
+                                  : ageMin != null ? `${ageMin}y+` : `Up to ${ageMax}y`}
+                              </span>
+                            )}
+                            {(weightMin != null || weightMax != null) && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-1.5 py-0.5">
+                                <Weight className="w-2.5 h-2.5" />
+                                {weightMin != null && weightMax != null
+                                  ? `${weightMin}-${weightMax}kg`
+                                  : weightMin != null ? `${weightMin}kg+` : `Up to ${weightMax}kg`}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })()}
+                      {/* ✅ NEW — Kid/Teen/Adult tagging, matching the
+                          restriction badges above in density (10px/1.5 padding)
+                          for this card's tighter layout. */}
+                      {s.categoryNames && s.categoryNames.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                          {s.categoryNames.map((name, i) => {
+                            const Icon = categoryChipIcon(name)
+                            return (
+                              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5">
+                                <Icon className="w-2.5 h-2.5" />
+                                {name}
+                              </span>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
