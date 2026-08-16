@@ -8,8 +8,8 @@ import {
   Filter, Banknote, SortAsc, SortDesc, Type, Maximize2, LayoutGrid,
   Baby, Backpack, Briefcase
 } from 'lucide-react'
-import type { Booking, Ride, RidePromo, PromoRideItem, BookingPromoItem, PaginationRequest } from '../../types'
-import api, { promoApi, bookingApi, reviewApi } from '../../services/api'
+import type { Booking, Ride, RidePromo, PromoRideItem, BookingPromoItem, PaginationRequest, RideValidationSettings } from '../../types'
+import api, { promoApi, bookingApi, reviewApi, settingsApi } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 
@@ -780,6 +780,28 @@ function combinePromoRange(rides: PromoRideItem[], minKey: 'minHeightCm'|'minAge
   }
 }
 
+// ✅ NEW — display-only variant of combinePromoRange, used just for the
+// browsing card's badges (not the guest booking modal's actual
+// validation). A General Admission ride included in the bundle (no rider
+// category tag, nothing manually entered) has null min/max here, which
+// combinePromoRange simply drops — if EVERY ride in the bundle is General
+// Admission that leaves nothing to combine and the badges vanish, making
+// the bundle look unrestricted. It isn't, so each General Admission ride's
+// missing metric is filled with the Attraction Validation Settings
+// floor/ceiling (`bounds`) before combining, same as a single ride card.
+function combinePromoRangeDisplay(
+  rides: PromoRideItem[], bounds: RideValidationSettings,
+  minKey: 'minHeightCm'|'minAgeYears'|'minWeightKg', maxKey: 'maxHeightCm'|'maxAgeYears'|'maxWeightKg',
+  floorKey: keyof RideValidationSettings, ceilingKey: keyof RideValidationSettings,
+) {
+  const mins = rides.map(r => r[minKey] ?? (bounds[floorKey] as number))
+  const maxs = rides.map(r => r[maxKey] ?? (bounds[ceilingKey] as number))
+  return {
+    min: mins.length ? Math.max(...mins) : undefined,
+    max: maxs.length ? Math.min(...maxs) : undefined,
+  }
+}
+
 function GuestBookingModal({
   rideName, date, time, price,
   minHeightCm, maxHeightCm, minAgeYears, maxAgeYears, minWeightKg, maxWeightKg, defaultName,
@@ -1421,6 +1443,30 @@ export function VisitorDashboard() {
   // ref used to scroll back to the top of the rides list on page change
   const ridesSectionRef = useRef<HTMLDivElement>(null)
 
+  // ✅ NEW — Attraction Validation Settings' widest floor–ceiling range, used
+  // to default-display a General Admission ride/bundle's restriction badges
+  // (no rider category tag, nothing manually entered) instead of hiding them
+  // entirely, matching the read-only "General Admission" card Admin sees in
+  // Settings. Falls back to these hardcoded defaults if the fetch fails, so
+  // the badges just quietly stop showing rather than breaking the page.
+  const [bounds, setBounds] = useState<RideValidationSettings>({
+    minHeightFloorCm: 50, minHeightCeilingCm: 250,
+    maxHeightFloorCm: 50, maxHeightCeilingCm: 250,
+    minAgeFloorYears: 1, minAgeCeilingYears: 100,
+    maxAgeFloorYears: 1, maxAgeCeilingYears: 130,
+    minWeightFloorKg: 1, minWeightCeilingKg: 400,
+    maxWeightFloorKg: 1, maxWeightCeilingKg: 400,
+    updatedAt: '',
+  })
+  useEffect(() => {
+    settingsApi.getRideValidation()
+      .then(res => {
+        const data: RideValidationSettings = res.data?.data ?? res.data
+        if (data) setBounds(data)
+      })
+      .catch(() => { /* keep defaults */ })
+  }, [])
+
   // ── Rides vs Promos toggle ──────────────────────────────────
   const [viewMode, setViewMode] = useState<'rides' | 'promos'>('rides')
   const [promos, setPromos]       = useState<RidePromo[]>([])
@@ -1889,38 +1935,58 @@ export function VisitorDashboard() {
                         {/* ✅ NEW — same restriction badges shown on the Admin
                             Rides card, surfaced here so visitors see height/age/
                             weight requirements while browsing, before they ever
-                            open the booking modal. */}
-                        {(ride.minHeightCm != null || ride.maxHeightCm != null
-                          || ride.minAgeYears != null || ride.maxAgeYears != null
-                          || ride.minWeightKg != null || ride.maxWeightKg != null) && (
-                          <div className="flex items-center gap-1.5 flex-wrap mb-3"
-                            title="Every guest in the party must meet all of these to book this attraction">
-                            {(ride.minHeightCm != null || ride.maxHeightCm != null) && (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-1 cursor-default">
-                                <Ruler className="w-3 h-3" />
-                                {ride.minHeightCm != null && ride.maxHeightCm != null
-                                  ? `${ride.minHeightCm}-${ride.maxHeightCm}cm`
-                                  : ride.minHeightCm != null ? `${ride.minHeightCm}cm+` : `Up to ${ride.maxHeightCm}cm`}
-                              </span>
-                            )}
-                            {(ride.minAgeYears != null || ride.maxAgeYears != null) && (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-1 cursor-default">
-                                <Cake className="w-3 h-3" />
-                                {ride.minAgeYears != null && ride.maxAgeYears != null
-                                  ? `${ride.minAgeYears}-${ride.maxAgeYears}y`
-                                  : ride.minAgeYears != null ? `${ride.minAgeYears}y+` : `Up to ${ride.maxAgeYears}y`}
-                              </span>
-                            )}
-                            {(ride.minWeightKg != null || ride.maxWeightKg != null) && (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2 py-1 cursor-default">
-                                <Weight className="w-3 h-3" />
-                                {ride.minWeightKg != null && ride.maxWeightKg != null
-                                  ? `${ride.minWeightKg}-${ride.maxWeightKg}kg`
-                                  : ride.minWeightKg != null ? `${ride.minWeightKg}kg+` : `Up to ${ride.maxWeightKg}kg`}
-                              </span>
-                            )}
-                          </div>
-                        )}
+                            open the booking modal.
+                            ✅ NEW — a General Admission ride (no rider category
+                            tag) with nothing manually entered has null fields
+                            here, which used to hide the badges entirely and
+                            make it look unrestricted. It isn't — General
+                            Admission still enforces the widest range
+                            Attraction Validation Settings (`bounds`) allows —
+                            so each metric falls back to that floor–ceiling
+                            pair whenever the ride has no manual value. */}
+                        {(() => {
+                          const isGeneralAdmission = !ride.categoryNames || ride.categoryNames.length === 0
+                          const heightMin = ride.minHeightCm ?? (isGeneralAdmission ? bounds.minHeightFloorCm : null)
+                          const heightMax = ride.maxHeightCm ?? (isGeneralAdmission ? bounds.maxHeightCeilingCm : null)
+                          const ageMin = ride.minAgeYears ?? (isGeneralAdmission ? bounds.minAgeFloorYears : null)
+                          const ageMax = ride.maxAgeYears ?? (isGeneralAdmission ? bounds.maxAgeCeilingYears : null)
+                          const weightMin = ride.minWeightKg ?? (isGeneralAdmission ? bounds.minWeightFloorKg : null)
+                          const weightMax = ride.maxWeightKg ?? (isGeneralAdmission ? bounds.maxWeightCeilingKg : null)
+
+                          if (heightMin == null && heightMax == null
+                            && ageMin == null && ageMax == null
+                            && weightMin == null && weightMax == null) return null
+
+                          return (
+                            <div className="flex items-center gap-1.5 flex-wrap mb-3"
+                              title="Every guest in the party must meet all of these to book this attraction">
+                              {(heightMin != null || heightMax != null) && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-1 cursor-default">
+                                  <Ruler className="w-3 h-3" />
+                                  {heightMin != null && heightMax != null
+                                    ? `${heightMin}-${heightMax}cm`
+                                    : heightMin != null ? `${heightMin}cm+` : `Up to ${heightMax}cm`}
+                                </span>
+                              )}
+                              {(ageMin != null || ageMax != null) && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-1 cursor-default">
+                                  <Cake className="w-3 h-3" />
+                                  {ageMin != null && ageMax != null
+                                    ? `${ageMin}-${ageMax}y`
+                                    : ageMin != null ? `${ageMin}y+` : `Up to ${ageMax}y`}
+                                </span>
+                              )}
+                              {(weightMin != null || weightMax != null) && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2 py-1 cursor-default">
+                                  <Weight className="w-3 h-3" />
+                                  {weightMin != null && weightMax != null
+                                    ? `${weightMin}-${weightMax}kg`
+                                    : weightMin != null ? `${weightMin}kg+` : `Up to ${weightMax}kg`}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })()}
                         {/* ✅ NEW — Kid/Teen/Adult tagging, same badge style
                             Admin > Attractions shows, so visitors see who
                             this attraction is meant for at a glance. */}
@@ -2172,9 +2238,9 @@ export function VisitorDashboard() {
                               of them), same visual treatment as a single-ride
                               card so visitors see requirements up front. */}
                           {(() => {
-                            const h = combinePromoRange(promo.rides, 'minHeightCm', 'maxHeightCm')
-                            const a = combinePromoRange(promo.rides, 'minAgeYears', 'maxAgeYears')
-                            const w = combinePromoRange(promo.rides, 'minWeightKg', 'maxWeightKg')
+                            const h = combinePromoRangeDisplay(promo.rides, bounds, 'minHeightCm', 'maxHeightCm', 'minHeightFloorCm', 'maxHeightCeilingCm')
+                            const a = combinePromoRangeDisplay(promo.rides, bounds, 'minAgeYears', 'maxAgeYears', 'minAgeFloorYears', 'maxAgeCeilingYears')
+                            const w = combinePromoRangeDisplay(promo.rides, bounds, 'minWeightKg', 'maxWeightKg', 'minWeightFloorKg', 'maxWeightCeilingKg')
                             const hasAny = h.min != null || h.max != null || a.min != null || a.max != null || w.min != null || w.max != null
                             if (!hasAny) return null
                             return (

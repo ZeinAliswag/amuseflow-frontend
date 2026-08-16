@@ -239,16 +239,16 @@ function AccordionSection({ title, subtitle, icon, open, onToggle, children }: {
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-between gap-3 px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors"
       >
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
 
-          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500">
+          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 flex-shrink-0">
             {icon}
           </div>
 
-          <div className="text-left">
+          <div className="text-left min-w-0">
 
             <div className="text-sm font-bold text-gray-900">
               {title}
@@ -263,7 +263,7 @@ function AccordionSection({ title, subtitle, icon, open, onToggle, children }: {
         </div>
 
         <ChevronDown
-          className={`w-5 h-5 text-gray-400 transition-transform ${
+          className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ${
             open ? 'rotate-180' : ''
           }`}
         />
@@ -271,7 +271,7 @@ function AccordionSection({ title, subtitle, icon, open, onToggle, children }: {
       </button>
 
       {open && (
-        <div className="border-t border-gray-100 px-5 pb-5">
+        <div className="border-t border-gray-100 px-4 sm:px-5 pb-5">
           {children}
         </div>
       )}
@@ -288,15 +288,15 @@ function AccordionSection({ title, subtitle, icon, open, onToggle, children }: {
 function SettingsAccordionSkeleton() {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden animate-pulse">
-      <div className="flex items-center justify-between gap-3 px-5 py-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gray-200" />
-          <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-gray-200 flex-shrink-0" />
+          <div className="space-y-1.5 min-w-0">
             <div className="h-3.5 bg-gray-200 rounded w-40" />
-            <div className="h-2.5 bg-gray-100 rounded w-56" />
+            <div className="h-2.5 bg-gray-100 rounded w-56 max-w-full" />
           </div>
         </div>
-        <div className="w-5 h-5 rounded bg-gray-200" />
+        <div className="w-5 h-5 rounded bg-gray-200 flex-shrink-0" />
       </div>
     </div>
   )

@@ -1189,16 +1189,16 @@ export default function AdminReportsPage() {
 
       {/* Trend chart */}
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
-          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+        <div className="flex items-center gap-3 px-4 sm:px-5 py-4 border-b border-gray-100">
+          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
             <BarChart3 className="w-5 h-5 text-amber-500" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-sm font-bold text-gray-900">Monthly average rating trend</div>
-            <div className="text-xs text-gray-400">{trend?.scopeLabel ?? 'Loading…'} · {periodLabel}</div>
+            <div className="text-xs text-gray-400 truncate">{trend?.scopeLabel ?? 'Loading…'} · {periodLabel}</div>
           </div>
         </div>
-        <div className="p-5">
+        <div className="p-4 sm:p-5">
           {loadingTrend ? (
             <div className="h-60 bg-gray-100 rounded-xl animate-pulse" />
           ) : trend && trend.points.length > 0 ? (
@@ -1211,14 +1211,14 @@ export default function AdminReportsPage() {
 
       {/* Breakdown table */}
       <Card className="!mb-0">
-        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-100 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
               <ListChecks className="w-5 h-5 text-blue-500" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="text-sm font-bold text-gray-900">Rating breakdown</div>
-              <div className="text-xs text-gray-400">Average rating per attraction / bundle, {periodLabel}</div>
+              <div className="text-xs text-gray-400 truncate">Average rating per attraction / bundle, {periodLabel}</div>
             </div>
           </div>
 
@@ -1245,29 +1245,38 @@ export default function AdminReportsPage() {
         ) : (
           <>
             <div className="divide-y divide-gray-50">
+              {/* ✅ CHANGED — stacks into two rows below `sm` (icon+name on
+                  top, rating+review count on a second, space-between row)
+                  instead of forcing all four pieces onto one line, matching
+                  the same flex-col sm:flex-row pattern the Bookings list
+                  rows use for mobile. */}
               {pagedBreakdown.map(e => (
-                <div key={`${e.type}-${e.id}`} className="flex items-center gap-4 px-4 sm:px-5 py-3.5">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                    e.type === 'Attraction' ? 'bg-emerald-50 text-emerald-600' : 'bg-pink-50 text-pink-600'
-                  }`}>
-                    {e.type === 'Attraction' ? <FerrisWheel className="w-4.5 h-4.5" /> : <BadgePercent className="w-4.5 h-4.5" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 text-sm truncate">{e.name}</div>
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${
-                      e.type === 'Attraction' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-pink-50 text-pink-700 border-pink-100'
+                <div key={`${e.type}-${e.id}`} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 sm:px-5 py-3.5">
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                      e.type === 'Attraction' ? 'bg-emerald-50 text-emerald-600' : 'bg-pink-50 text-pink-600'
                     }`}>
-                      {e.type}
-                    </span>
+                      {e.type === 'Attraction' ? <FerrisWheel className="w-4.5 h-4.5" /> : <BadgePercent className="w-4.5 h-4.5" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-gray-900 text-sm truncate">{e.name}</div>
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                        e.type === 'Attraction' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-pink-50 text-pink-700 border-pink-100'
+                      }`}>
+                        {e.type}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Stars value={e.averageRating} />
-                    <span className="text-sm font-bold text-gray-900 w-10 text-right">
-                      {e.reviewCount > 0 ? e.averageRating.toFixed(2) : '—'}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-400 w-20 text-right flex-shrink-0">
-                    {e.reviewCount} review{e.reviewCount === 1 ? '' : 's'}
+                  <div className="flex items-center justify-between sm:justify-end gap-4 flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Stars value={e.averageRating} />
+                      <span className="text-sm font-bold text-gray-900 w-10 text-right">
+                        {e.reviewCount > 0 ? e.averageRating.toFixed(2) : '—'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-400 w-20 text-right flex-shrink-0">
+                      {e.reviewCount} review{e.reviewCount === 1 ? '' : 's'}
+                    </div>
                   </div>
                 </div>
               ))}

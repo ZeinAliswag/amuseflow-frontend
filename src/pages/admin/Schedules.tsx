@@ -783,6 +783,14 @@ export default function AdminSchedulesPage() {
   const [rides, setRides]         = useState<Ride[]>([])
   const [attendants, setAttendants] = useState<User[]>([])
 
+  // ✅ NEW — the Attraction and Attendant comboboxes below used to list
+  // options in whatever order the API returned them (insertion/ID order),
+  // which jumped around unpredictably. Sorted once here (name A→Z for
+  // rides, last name A→Z for attendants) and reused by every combobox that
+  // lists them, instead of re-sorting inline at each usage.
+  const sortedRides = [...rides].sort((a, b) => a.name.localeCompare(b.name))
+  const sortedAttendants = [...attendants].sort((a, b) => a.lastName.localeCompare(b.lastName))
+
   // calendar state
   const today = new Date()
   const [calYear, setCalYear]   = useState(today.getFullYear())
@@ -1333,7 +1341,7 @@ export default function AdminSchedulesPage() {
                   value={String(form.rideId || '')}
                   onChange={v => setForm({...form, rideId: Number(v) || 0})}
                   placeholder="Select an attraction..."
-                  options={rides.map(r => ({ value: String(r.id), label: r.name }))}
+                  options={sortedRides.map(r => ({ value: String(r.id), label: r.name }))}
                 />
               </div>
               {/* ✅ NEW — Regular (directly bookable by visitors) vs Promo
@@ -1402,7 +1410,7 @@ export default function AdminSchedulesPage() {
                       placeholder="Select an attendant..."
                       options={[
                         { value: '', label: 'Unassigned' },
-                        ...attendants.map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}` }))
+                        ...sortedAttendants.map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}` }))
                       ]}
                     />
                   </div>
@@ -1455,7 +1463,7 @@ export default function AdminSchedulesPage() {
                         placeholder="Select an attendant..."
                         options={[
                           { value: '', label: 'Unassigned' },
-                          ...attendants.map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}` }))
+                          ...sortedAttendants.map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}` }))
                         ]}
                       />
                     ) : rangeDates.length === 0 ? (
@@ -1476,7 +1484,7 @@ export default function AdminSchedulesPage() {
                                 placeholder="Select an attendant..."
                                 options={[
                                   { value: '', label: 'Unassigned' },
-                                  ...attendants.map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}` }))
+                                  ...sortedAttendants.map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}` }))
                                 ]}
                               />
                             </div>

@@ -774,45 +774,65 @@ export default function AdminRidesPage() {
                     </div>
                     <p className="text-xs text-gray-400 line-clamp-2 mb-3 min-h-[2rem]">{ride.description ?? 'No description'}</p>
 
-                    {/* ✅ CHANGED — restriction badges, only shown when the
-                        ride actually has a height, age, and/or weight
-                        requirement. Split into one chip per metric (instead
-                        of one flat string) so each is scannable at a glance,
-                        color-coded by type, with a hover tooltip explaining
-                        that a guest must meet ALL of the ones shown. Age/
-                        weight render as a range when both ends are set, or
-                        an open-ended "X+"/"up to X" otherwise. */}
-                    {(ride.minHeightCm != null || ride.maxHeightCm != null
-                      || ride.minAgeYears != null || ride.maxAgeYears != null
-                      || ride.minWeightKg != null || ride.maxWeightKg != null) && (
-                      <div className="flex items-center gap-1.5 flex-wrap mb-3"
-                        title="Every guest in the party must meet all of these to book this attraction">
-                        {(ride.minHeightCm != null || ride.maxHeightCm != null) && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-1 cursor-default">
-                            <Ruler className="w-3 h-3" />
-                            {ride.minHeightCm != null && ride.maxHeightCm != null
-                              ? `${ride.minHeightCm}-${ride.maxHeightCm}cm`
-                              : ride.minHeightCm != null ? `${ride.minHeightCm}cm+` : `Up to ${ride.maxHeightCm}cm`}
-                          </span>
-                        )}
-                        {(ride.minAgeYears != null || ride.maxAgeYears != null) && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-1 cursor-default">
-                            <Cake className="w-3 h-3" />
-                            {ride.minAgeYears != null && ride.maxAgeYears != null
-                              ? `${ride.minAgeYears}-${ride.maxAgeYears}y`
-                              : ride.minAgeYears != null ? `${ride.minAgeYears}y+` : `Up to ${ride.maxAgeYears}y`}
-                          </span>
-                        )}
-                        {(ride.minWeightKg != null || ride.maxWeightKg != null) && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2 py-1 cursor-default">
-                            <Weight className="w-3 h-3" />
-                            {ride.minWeightKg != null && ride.maxWeightKg != null
-                              ? `${ride.minWeightKg}-${ride.maxWeightKg}kg`
-                              : ride.minWeightKg != null ? `${ride.minWeightKg}kg+` : `Up to ${ride.maxWeightKg}kg`}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                    {/* ✅ CHANGED — restriction badges. Split into one chip
+                        per metric (instead of one flat string) so each is
+                        scannable at a glance, color-coded by type, with a
+                        hover tooltip explaining that a guest must meet ALL
+                        of the ones shown. Age/height/weight render as a
+                        range when both ends are set, or an open-ended
+                        "X+"/"up to X" otherwise.
+                        ✅ NEW — a General Admission ride (no rider category
+                        tag) with nothing manually entered has null fields
+                        here, which used to hide the badges entirely and
+                        make it look unrestricted. It isn't — General
+                        Admission still enforces the widest range Attraction
+                        Validation Settings (`bounds`) allows, same as the
+                        read-only "General Admission" card in Settings — so
+                        each metric falls back to that floor–ceiling pair
+                        whenever the ride has no manual value of its own. */}
+                    {(() => {
+                      const isGeneralAdmission = !ride.categoryNames || ride.categoryNames.length === 0
+                      const heightMin = ride.minHeightCm ?? (isGeneralAdmission ? bounds.minHeightFloorCm : null)
+                      const heightMax = ride.maxHeightCm ?? (isGeneralAdmission ? bounds.maxHeightCeilingCm : null)
+                      const ageMin = ride.minAgeYears ?? (isGeneralAdmission ? bounds.minAgeFloorYears : null)
+                      const ageMax = ride.maxAgeYears ?? (isGeneralAdmission ? bounds.maxAgeCeilingYears : null)
+                      const weightMin = ride.minWeightKg ?? (isGeneralAdmission ? bounds.minWeightFloorKg : null)
+                      const weightMax = ride.maxWeightKg ?? (isGeneralAdmission ? bounds.maxWeightCeilingKg : null)
+
+                      if (heightMin == null && heightMax == null
+                        && ageMin == null && ageMax == null
+                        && weightMin == null && weightMax == null) return null
+
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap mb-3"
+                          title="Every guest in the party must meet all of these to book this attraction">
+                          {(heightMin != null || heightMax != null) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2 py-1 cursor-default">
+                              <Ruler className="w-3 h-3" />
+                              {heightMin != null && heightMax != null
+                                ? `${heightMin}-${heightMax}cm`
+                                : heightMin != null ? `${heightMin}cm+` : `Up to ${heightMax}cm`}
+                            </span>
+                          )}
+                          {(ageMin != null || ageMax != null) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-1 cursor-default">
+                              <Cake className="w-3 h-3" />
+                              {ageMin != null && ageMax != null
+                                ? `${ageMin}-${ageMax}y`
+                                : ageMin != null ? `${ageMin}y+` : `Up to ${ageMax}y`}
+                            </span>
+                          )}
+                          {(weightMin != null || weightMax != null) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2 py-1 cursor-default">
+                              <Weight className="w-3 h-3" />
+                              {weightMin != null && weightMax != null
+                                ? `${weightMin}-${weightMax}kg`
+                                : weightMin != null ? `${weightMin}kg+` : `Up to ${weightMax}kg`}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })()}
 
                     {/* ✅ NEW — this ride's real, saved Kid/Teen/Adult
                         tagging (separate row from the height/age/weight
