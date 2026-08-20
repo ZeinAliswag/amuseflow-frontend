@@ -250,22 +250,29 @@ function BookingRidesModal({ name, promoDate, rides, onClose }: {
   )
 }
 
-// ── Rides / Promos toggle — segmented control, same visual language as
-// the StatusCombobox-style filters used elsewhere (Rides.tsx, AttendantDashboard) ──
+// ── Rides / Promos switch — promoted to a real top-level tab bar that
+// always sits in the exact same physical spot (top of the card, above the
+// title + filters), instead of living inside the filter row where its
+// position depended on how many sort/search controls were next to it.
+// Underline-indicator style (Stripe/Linear-style tabs) reads as primary
+// navigation rather than "just another filter chip", and gives a bigger,
+// more obviously-tappable target on mobile. ──
 function ViewToggle({ value, onChange }: { value: 'rides' | 'promos'; onChange: (v: 'rides' | 'promos') => void }) {
   return (
-    <div className="inline-flex items-center bg-gray-100 rounded-xl p-1 gap-1">
+    <div className="flex items-center gap-1 px-4 sm:px-5 border-b border-gray-100 bg-gray-50/60">
       <button type="button" onClick={() => onChange('rides')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-          value === 'rides' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+        className={`relative flex items-center gap-1.5 px-3 py-3 text-sm font-semibold transition-colors active:scale-95 ${
+          value === 'rides' ? 'text-emerald-700' : 'text-gray-400 hover:text-gray-600'
         }`}>
-        <FerrisWheel className="w-3.5 h-3.5" /> Attractions
+        <FerrisWheel className="w-4 h-4" /> Attractions
+        {value === 'rides' && <span className="absolute left-0 right-0 -bottom-px h-0.5 rounded-full bg-emerald-500" />}
       </button>
       <button type="button" onClick={() => onChange('promos')}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-          value === 'promos' ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+        className={`relative flex items-center gap-1.5 px-3 py-3 text-sm font-semibold transition-colors active:scale-95 ${
+          value === 'promos' ? 'text-pink-700' : 'text-gray-400 hover:text-gray-600'
         }`}>
-        <Tag className="w-3.5 h-3.5" /> Bundles
+        <Tag className="w-4 h-4" /> Bundles
+        {value === 'promos' && <span className="absolute left-0 right-0 -bottom-px h-0.5 rounded-full bg-pink-500" />}
       </button>
     </div>
   )
@@ -1353,8 +1360,8 @@ function DateRangeModal({ from, to, onApply, onClose }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center">
               <CalendarDays className="w-5 h-5 text-slate-600" />
@@ -1366,7 +1373,7 @@ function DateRangeModal({ from, to, onApply, onClose }: {
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
           <div>
             <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Quick select</div>
             <div className="grid grid-cols-2 gap-2">
@@ -1394,7 +1401,7 @@ function DateRangeModal({ from, to, onApply, onClose }: {
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3">
+        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3 flex-shrink-0">
           <button type="button" onClick={() => { setTempFrom(''); setTempTo('') }}
             className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
             Clear
@@ -1835,6 +1842,11 @@ export function VisitorDashboard() {
 
       {/* Rides or Schedules */}
       <div ref={ridesSectionRef} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm scroll-mt-6">
+        {/* ✅ CHANGED — Attractions/Bundles switch now lives here, fixed at
+            the very top of the card regardless of which tab or drill-down
+            view is active, instead of being reordered inside each tab's
+            filter row. */}
+        {!selectedRide && !selectedPromo && <ViewToggle value={viewMode} onChange={setViewMode} />}
         {viewMode === 'rides' ? ( !selectedRide ? (
           // ── Rides list ──────────────────────────────────────
           <>
@@ -1846,7 +1858,6 @@ export function VisitorDashboard() {
               <p className="text-xs text-gray-500">Click an attraction to see available schedules and book.</p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <ViewToggle value={viewMode} onChange={setViewMode} />
                 {/* ✅ NEW — sort by Price or Rating, ascending by default,
                     same combobox style as Admin's Rides.tsx. */}
                 <RideSortByCombobox
@@ -2155,7 +2166,6 @@ export function VisitorDashboard() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <PromoSortByCombobox value={promoSortBy} onChange={v => setPromoSortBy(v as '' | 'Name' | 'Price')} />
                   <PromoSortDirCombobox value={promoSortDir} onChange={setPromoSortDir} />
-                  <ViewToggle value={viewMode} onChange={setViewMode} />
                 </div>
               </div>
 

@@ -362,8 +362,8 @@ function PromoDateRangeModal({ from, to, onApply, onClose }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center">
               <CalendarDays className="w-5 h-5 text-gray-600" />
@@ -375,7 +375,7 @@ function PromoDateRangeModal({ from, to, onApply, onClose }: {
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
           <div>
             <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Quick select</div>
             <div className="grid grid-cols-2 gap-2">
@@ -403,7 +403,7 @@ function PromoDateRangeModal({ from, to, onApply, onClose }: {
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3">
+        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3 flex-shrink-0">
           <button type="button" onClick={() => { setTempFrom(''); setTempTo('') }}
             className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
             Clear
@@ -836,11 +836,17 @@ export default function AdminPromosPage() {
   // (fully separate pools, enforced server-side too). Plus whatever's
   // already locked in on the promo being edited (so it doesn't vanish from
   // its own dropdown if it since filled up or the date was changed after).
+  // ✅ NEW — a schedule already locked into a DIFFERENT bundle (e.g.
+  // Dragon Coaster 9:30–9:40 claimed by "Batch 1") is filtered out here too,
+  // so it can't even be picked in the UI for "Batch 2" — matches the
+  // server-side guard in RidePromoService.ValidateAsync, but catches it
+  // before the admin fills out the whole form and hits Save.
   const schedulesForRide = (rideId: number) =>
     allSchedules.filter(s =>
       s.rideId === rideId &&
       s.scheduleDate?.slice(0, 10) === form.promoDate &&
       (s.scheduleType ?? 'Regular') === 'Promo' &&
+      (!s.promoId || s.promoId === editPromo?.id) &&
       (((s.status === 'Open') && s.availableSlots > 0) || form.scheduleByRide[rideId] === s.id)
     )
 

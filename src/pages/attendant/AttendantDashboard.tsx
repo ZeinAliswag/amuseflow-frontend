@@ -416,8 +416,8 @@ function DateRangeModal({ from, to, onApply, onClose }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center">
               <CalendarDays className="w-5 h-5 text-gray-600" />
@@ -429,7 +429,7 @@ function DateRangeModal({ from, to, onApply, onClose }: {
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
           <div>
             <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Quick select</div>
             <div className="grid grid-cols-2 gap-2">
@@ -457,7 +457,7 @@ function DateRangeModal({ from, to, onApply, onClose }: {
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3">
+        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3 flex-shrink-0">
           <button type="button" onClick={() => { setTempFrom(''); setTempTo('') }}
             className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
             Clear

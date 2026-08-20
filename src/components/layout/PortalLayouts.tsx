@@ -109,7 +109,19 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     { label: '1 special (@$!%*?&)', ok: /[@$!%*?&]/.test(newPassword) },
   ]
 
-  const isChangingPassword = newPassword.length > 0 || confirmPassword.length > 0
+  // ✅ FIXED — was `newPassword.length > 0 || confirmPassword.length > 0`, so a
+  // browser/password-manager silently autofilling just the "New password"
+  // field (a well-known issue on fields without an explicit autoComplete
+  // hint — see the inputs below) flipped this true on page load even though
+  // the person never touched it. That made handleSave run the password
+  // branch, "Passwords do not match" (confirm was still empty) fired, and
+  // the function returned BEFORE the contact-number update ever ran — so
+  // leaving the password fields alone silently blocked the contact save.
+  // Requiring BOTH fields non-empty means a stray autofill in just one of
+  // them is treated as "not changing password," matching the helper text
+  // below ("leave password fields blank if you only want to update your
+  // contact number") and letting the contact-only save go through.
+  const isChangingPassword = newPassword.trim().length > 0 && confirmPassword.trim().length > 0
   const isChangingContact = !contactLocked && contactNumber.replace(/\D/g, '') !== initialContactNumber.replace(/\D/g, '')
   const hasChanges = isChangingPassword || isChangingContact
 
@@ -197,13 +209,13 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1.5">New password</label>
-            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+            <input type="password" autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
               placeholder="Min. 8 characters"
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1.5">Confirm new password</label>
-            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+            <input type="password" autoComplete="new-password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
               placeholder="Re-enter new password"
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
           </div>
@@ -576,8 +588,8 @@ function DateRangeModal({ from, to, onApply, onClose }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-[120] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center">
               <CalendarDays className="w-5 h-5 text-gray-600" />
@@ -589,7 +601,7 @@ function DateRangeModal({ from, to, onApply, onClose }: {
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
           <div>
             <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Quick select</div>
             <div className="grid grid-cols-2 gap-2">
@@ -617,7 +629,7 @@ function DateRangeModal({ from, to, onApply, onClose }: {
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3">
+        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3 flex-shrink-0">
           <button type="button" onClick={() => { setTempFrom(''); setTempTo('') }}
             className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
             Clear
