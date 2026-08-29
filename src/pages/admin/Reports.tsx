@@ -840,6 +840,12 @@ export default function AdminReportsPage() {
   const printableRef = useRef<HTMLDivElement>(null)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [downloadingWord, setDownloadingWord] = useState(false)
+  // ✅ NEW — Print report used to call window.print(), which a lot of
+  // mobile browsers/embedded webviews handle inconsistently (or ignore
+  // entirely) alongside the @media print stylesheet. It now reuses the
+  // same PDF pipeline as "Download PDF" instead, so it needs its own
+  // loading flag.
+  const [printing, setPrinting] = useState(false)
 
   // ── Breakdown table sort + pagination (client-side — the list of
   // Attractions/Bundles is small enough that a second server round trip
@@ -966,10 +972,13 @@ export default function AdminReportsPage() {
   // cut a table row or summary card in half), each page break is snapped to
   // the nearest safe gap — the bottom edge of a <tr> or a top-level report
   // section — so nothing ever gets sliced through.
-  const handleDownloadPdf = async () => {
+  // ✅ CHANGED — split out of handleDownloadPdf so the same fully-paginated,
+  // letterhead-formatted PDF can be reused by both "Download PDF" (saves to
+  // disk) and "Print report" (opens in a new tab instead — see
+  // handlePrintReport below for why).
+  const buildReportPdf = async (): Promise<jsPDF | null> => {
     const node = printableRef.current
-    if (!node) return
-    setDownloadingPdf(true)
+    if (!node) return null
     const prevStyle = node.getAttribute('style')
     const contentWidthPx = 816
     try {
@@ -1059,14 +1068,48 @@ export default function AdminReportsPage() {
         pdf.text(`Page ${i} of ${totalPages}`, pageWidth - 24, pageHeight - 14, { align: 'right' })
       }
 
-      pdf.save(`AmuseFlow Rating Report - ${periodLabel}.pdf`)
-    } catch (e) {
-      toast.error('Failed to generate PDF.')
+      return pdf
     } finally {
       if (prevStyle === null) node.removeAttribute('style')
       else node.setAttribute('style', prevStyle)
       node.classList.add('hidden')
+    }
+  }
+
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true)
+    try {
+      const pdf = await buildReportPdf()
+      if (!pdf) return
+      pdf.save(`AmuseFlow Rating Report - ${periodLabel}.pdf`)
+    } catch (e) {
+      toast.error('Failed to generate PDF.')
+    } finally {
       setDownloadingPdf(false)
+    }
+  }
+
+  // ✅ NEW — Print report now builds the same PDF as "Download PDF" and
+  // opens it in a new tab, instead of calling window.print() directly.
+  // window.print() + the @media print stylesheet only reliably works in
+  // a full desktop browser — on plenty of phones/tablets (and any
+  // in-app/embedded webview) tapping it does nothing at all, since
+  // there's no OS print pipeline hooked up the same way. Handing the
+  // device a real PDF file instead means its own PDF viewer (which every
+  // platform has, with a working Print/Share button) takes over — this
+  // works the same on a laptop, phone, or tablet.
+  const handlePrintReport = async () => {
+    setPrinting(true)
+    try {
+      const pdf = await buildReportPdf()
+      if (!pdf) return
+      const blobUrl = pdf.output('bloburl') as unknown as string
+      const opened = window.open(blobUrl, '_blank')
+      if (!opened) toast.error('Pop-up blocked — allow pop-ups for this site, then try again.')
+    } catch (e) {
+      toast.error('Failed to generate report.')
+    } finally {
+      setPrinting(false)
     }
   }
 
@@ -1109,17 +1152,17 @@ export default function AdminReportsPage() {
           <p className="text-sm text-gray-500 mt-1">Average visitor ratings by month, attraction, and attraction bundle.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={handleDownloadPdf} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord}
+          <button onClick={handleDownloadPdf} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
             className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
             {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} Download PDF
           </button>
-          <button onClick={handleDownloadWord} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord}
+          <button onClick={handleDownloadWord} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
             className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
             {downloadingWord ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Download Word
           </button>
-          <button onClick={() => window.print()} disabled={loadingTrend || loadingBreakdown}
+          <button onClick={handlePrintReport} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50">
-            <Printer className="w-4 h-4" /> Print report
+            {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print report
           </button>
         </div>
       </div>
