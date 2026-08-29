@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { ReactNode } from 'react'
 import {
   BarChart3, Star, Printer, FerrisWheel, BadgePercent,
@@ -838,6 +839,17 @@ export default function AdminReportsPage() {
 
   // ── PDF / Word export ──────────────────────────────────────────────
   const printableRef = useRef<HTMLDivElement>(null)
+  // ✅ CHANGED — was a plain `new Date()` computed inline during render,
+  // which only recalculates when something ELSE triggers a re-render — sit
+  // on the Reports page from 11:14 to 11:15 without touching a filter, and
+  // the letterhead would still show "11:14" a minute later. Then tried
+  // mutating the rendered text directly via a ref right before capture,
+  // but that raced against React's own reconciliation (a pending re-render
+  // from setPrinting/setDownloadingPdf could overwrite the manual DOM edit
+  // with a stale closure value before html2canvas ever ran). Making it real
+  // state, updated with flushSync so the DOM is guaranteed committed BEFORE
+  // capture starts, is the version that's actually reliable.
+  const [generatedAt, setGeneratedAt] = useState(() => new Date())
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [downloadingWord, setDownloadingWord] = useState(false)
   // ✅ NEW — Print report used to call window.print(), which a lot of
@@ -954,7 +966,7 @@ export default function AdminReportsPage() {
   const topRated = [...reviewedBreakdown].sort((a, b) => b.averageRating - a.averageRating)[0]
 
   const periodLabel = fmtRange(fromDate, toDate)
-  const generatedAtLabel = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' })
+  const generatedAtLabel = generatedAt.toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' })
   const breakdownHeading = `Rating Breakdown by ${scope === 'Promo' ? 'Attraction Bundle' : scope === 'Ride' ? 'Attraction' : 'Attraction / Bundle'}`
 
   // The printable div is normally `display:none` (Tailwind `hidden`) except
@@ -981,6 +993,13 @@ export default function AdminReportsPage() {
     if (!node) return null
     const prevStyle = node.getAttribute('style')
     const contentWidthPx = 816
+    // ✅ CHANGED — stamp the CURRENT time onto the report right before
+    // capture. flushSync forces React to synchronously re-render AND commit
+    // the new generatedAt to the DOM before this line returns, so by the
+    // time html2canvas runs a few lines down, the letterhead is guaranteed
+    // to already show the fresh timestamp — no async gap for a stale render
+    // to sneak back in and overwrite it.
+    flushSync(() => setGeneratedAt(new Date()))
     try {
       node.classList.remove('hidden')
       Object.assign(node.style, {
@@ -1099,14 +1118,37 @@ export default function AdminReportsPage() {
   // platform has, with a working Print/Share button) takes over — this
   // works the same on a laptop, phone, or tablet.
   const handlePrintReport = async () => {
+    // ✅ CHANGED — open the blank tab FIRST, synchronously, before the async
+    // PDF build. Two reasons: (1) some browsers only allow window.open to
+    // bypass the pop-up blocker when it's called directly inside the click
+    // handler, not after an `await`; (2) navigating an already-open
+    // about:blank tab via document.write (instead of pointing window.open
+    // straight at a blob: URL) is what actually gets the favicon to show —
+    // Chrome's favicon fetcher reliably reads <link rel="icon"> off an
+    // about:blank document populated this way, but very inconsistently (if
+    // at all) off a page whose own top-level URL IS a blob:.
+    const tab = window.open('', '_blank')
+    if (!tab) {
+      toast.error('Pop-up blocked — allow pop-ups for this site, then try again.')
+      return
+    }
     setPrinting(true)
     try {
       const pdf = await buildReportPdf()
-      if (!pdf) return
-      const blobUrl = pdf.output('bloburl') as unknown as string
-      const opened = window.open(blobUrl, '_blank')
-      if (!opened) toast.error('Pop-up blocked — allow pop-ups for this site, then try again.')
+      if (!pdf) { tab.close(); return }
+      const pdfBlobUrl = pdf.output('bloburl') as unknown as string
+      // ✅ CHANGED — instead of faking a favicon by writing an HTML shell
+      // (or an about:blank doc) into the new tab, stash the PDF blob URL
+      // and title on THIS window so the new tab can read them back via
+      // window.opener, then navigate that tab to our own /print-preview
+      // route. That route is served through index.html like any other
+      // page in this app, so the browser fetches the real Fantasyland
+      // favicon the normal way — no blob:/about:blank favicon quirks.
+      ;(window as any).__amuseflowPrintPdfUrl = pdfBlobUrl
+      ;(window as any).__amuseflowPrintTitle = `AmuseFlow Rating Report - ${periodLabel}`
+      tab.location.href = '/print-preview'
     } catch (e) {
+      tab.close()
       toast.error('Failed to generate report.')
     } finally {
       setPrinting(false)
@@ -1126,7 +1168,11 @@ export default function AdminReportsPage() {
         breakdown: sortedBreakdown,
         breakdownHeading,
         preparedByName: user?.fullName ?? 'Admin',
-        generatedAtLabel,
+        // ✅ CHANGED — was the stale render-time `generatedAtLabel` const
+        // (see the generatedAtRef comment above the PDF builder for why
+        // that can lag behind the real clock). Word export doesn't touch
+        // the DOM, so it just computes the timestamp fresh right here.
+        generatedAtLabel: new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' }),
       })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
