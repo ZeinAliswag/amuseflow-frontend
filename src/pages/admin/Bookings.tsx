@@ -55,12 +55,22 @@ function CallTimeBadge({ time, className = '', label = 'Call time' }: { time?: s
 // name/code block, ride/promo info block, price/status block). Shown while
 // paging/filtering instead of a centered spinner, so the list keeps its
 // shape rather than collapsing to a spinner mid-page.
+// ✅ CHANGED — this row packs unusually a lot into one line once it goes
+// horizontal (avatar + fixed-width visitor block + ride/promo info + price
+// + 2 badges + 2 action buttons), more than the other list rows in the app
+// that share the flex-col/sm:flex-row convention. Switching to a row at
+// `sm:` (640px) left almost no breathing room on an iPad portrait (768px)
+// or any tablet — everything but the ride/promo name got squeezed. Bumped
+// this row (and its skeleton, so loading/loaded don't jump layouts at
+// different widths) to switch at `lg:` (1024px) instead, so phones AND
+// tablets get the roomier stacked layout, and only real desktop widths get
+// the condensed single-line row.
 function BookingRowSkeleton() {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 animate-pulse">
-      <div className="flex items-center gap-3 sm:contents">
+    <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-4 px-4 sm:px-5 py-4 animate-pulse">
+      <div className="flex items-center gap-3 lg:contents">
         <div className="w-10 h-10 rounded-xl bg-gray-200 flex-shrink-0" />
-        <div className="flex-1 sm:w-40 sm:flex-shrink-0 space-y-1.5">
+        <div className="flex-1 lg:w-40 lg:flex-shrink-0 space-y-1.5">
           <div className="h-3.5 bg-gray-200 rounded w-24" />
           <div className="h-2.5 bg-gray-100 rounded w-16" />
           <div className="h-5 bg-gray-100 rounded w-28" />
@@ -70,7 +80,7 @@ function BookingRowSkeleton() {
         <div className="h-3.5 bg-gray-200 rounded w-40" />
         <div className="h-2.5 bg-gray-100 rounded w-32" />
       </div>
-      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
+      <div className="flex items-center justify-between lg:justify-end gap-3 lg:gap-4">
         <div className="h-4 bg-gray-200 rounded w-14" />
         <div className="h-5 bg-gray-100 rounded-full w-16" />
       </div>
@@ -740,18 +750,18 @@ export default function AdminBookingsPage() {
             <div className="divide-y divide-gray-300">
               {bookings.map(b => (
                 <div key={b.id}
-                  className={`relative flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 transition-colors group ${
+                  className={`relative flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-4 px-4 sm:px-5 py-4 transition-colors group ${
                     !b.isRead ? 'bg-red-50/60' : 'hover:bg-gray-50/60'
                   }`}>
                   {!b.isRead && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-red-500" />}
-                  <div className="flex items-center gap-3 sm:contents">
+                  <div className="flex items-center gap-3 lg:contents">
                     {/* Avatar */}
                     <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
                       {b.visitorName?.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
                     </div>
 
                     {/* Visitor + booking code */}
-                    <div className="flex-1 sm:w-40 sm:flex-shrink-0 min-w-0">
+                    <div className="flex-1 lg:w-40 lg:flex-shrink-0 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <div className="font-semibold text-gray-900 text-sm truncate">{b.visitorName}</div>
                         {!b.isRead && (
@@ -819,9 +829,9 @@ export default function AdminBookingsPage() {
                   )}
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
+                  <div className="flex items-center justify-between lg:justify-end gap-3 lg:gap-4">
                     {/* Price */}
-                    <div className="text-left sm:text-right flex-shrink-0">
+                    <div className="text-left lg:text-right flex-shrink-0">
                       <div className="font-bold text-gray-900 text-sm">₱{fmt(b.promoId ? b.paymentAmount : b.ridePrice)}</div>
                     </div>
 
@@ -832,7 +842,7 @@ export default function AdminBookingsPage() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2 flex-shrink-0 sm:min-w-[140px] justify-end">
+                    <div className="flex items-center gap-2 flex-shrink-0 lg:min-w-[140px] justify-end">
                       {b.status === 'Pending' ? (
                         <>
                           <button onClick={() => setApproveTarget(b)} title="Approve"
