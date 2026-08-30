@@ -15,7 +15,6 @@ import AdminUsersPage from './pages/admin/Users'
 import AdminLogsPage from './pages/admin/Logs'
 import AdminSettingsPage from './pages/admin/Settings'
 import AdminReportsPage from './pages/admin/Reports'
-import ReportPrintPreview from './pages/admin/ReportPrintPreview'
 import { VisitorDashboard } from './pages/visitor/VisitorDashboard'
 import { AttendantDashboard } from './pages/attendant/AttendantDashboard'
 
@@ -101,14 +100,6 @@ function AppRoutes() {
           <AdminLayout><AdminReportsPage /></AdminLayout>
         </ProtectedRoute>
       } />
-
-      {/* ✅ NEW — "Print report" opens this in a fresh tab instead of a
-          blob:/about:blank one, purely so that tab loads through
-          index.html and gets a real favicon. Not auth-gated: it fetches
-          nothing from the server, it just reads a blob URL the opener
-          window already generated client-side, and shows nothing at all
-          if there isn't one (e.g. someone bookmarks/shares this URL). */}
-      <Route path="/print-preview" element={<ReportPrintPreview />} />
 
       {/* Visitor routes */}
       <Route path="/visitor" element={

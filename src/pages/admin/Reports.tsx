@@ -852,12 +852,6 @@ export default function AdminReportsPage() {
   const [generatedAt, setGeneratedAt] = useState(() => new Date())
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [downloadingWord, setDownloadingWord] = useState(false)
-  // ✅ NEW — Print report used to call window.print(), which a lot of
-  // mobile browsers/embedded webviews handle inconsistently (or ignore
-  // entirely) alongside the @media print stylesheet. It now reuses the
-  // same PDF pipeline as "Download PDF" instead, so it needs its own
-  // loading flag.
-  const [printing, setPrinting] = useState(false)
 
   // ── Breakdown table sort + pagination (client-side — the list of
   // Attractions/Bundles is small enough that a second server round trip
@@ -1108,51 +1102,20 @@ export default function AdminReportsPage() {
     }
   }
 
-  // ✅ NEW — Print report now builds the same PDF as "Download PDF" and
-  // opens it in a new tab, instead of calling window.print() directly.
-  // window.print() + the @media print stylesheet only reliably works in
-  // a full desktop browser — on plenty of phones/tablets (and any
-  // in-app/embedded webview) tapping it does nothing at all, since
-  // there's no OS print pipeline hooked up the same way. Handing the
-  // device a real PDF file instead means its own PDF viewer (which every
-  // platform has, with a working Print/Share button) takes over — this
-  // works the same on a laptop, phone, or tablet.
-  const handlePrintReport = async () => {
-    // ✅ CHANGED — open the blank tab FIRST, synchronously, before the async
-    // PDF build. Two reasons: (1) some browsers only allow window.open to
-    // bypass the pop-up blocker when it's called directly inside the click
-    // handler, not after an `await`; (2) navigating an already-open
-    // about:blank tab via document.write (instead of pointing window.open
-    // straight at a blob: URL) is what actually gets the favicon to show —
-    // Chrome's favicon fetcher reliably reads <link rel="icon"> off an
-    // about:blank document populated this way, but very inconsistently (if
-    // at all) off a page whose own top-level URL IS a blob:.
-    const tab = window.open('', '_blank')
-    if (!tab) {
-      toast.error('Pop-up blocked — allow pop-ups for this site, then try again.')
-      return
-    }
-    setPrinting(true)
-    try {
-      const pdf = await buildReportPdf()
-      if (!pdf) { tab.close(); return }
-      const pdfBlobUrl = pdf.output('bloburl') as unknown as string
-      // ✅ CHANGED — instead of faking a favicon by writing an HTML shell
-      // (or an about:blank doc) into the new tab, stash the PDF blob URL
-      // and title on THIS window so the new tab can read them back via
-      // window.opener, then navigate that tab to our own /print-preview
-      // route. That route is served through index.html like any other
-      // page in this app, so the browser fetches the real Fantasyland
-      // favicon the normal way — no blob:/about:blank favicon quirks.
-      ;(window as any).__amuseflowPrintPdfUrl = pdfBlobUrl
-      ;(window as any).__amuseflowPrintTitle = `AmuseFlow Rating Report - ${periodLabel}`
-      tab.location.href = '/print-preview'
-    } catch (e) {
-      tab.close()
-      toast.error('Failed to generate report.')
-    } finally {
-      setPrinting(false)
-    }
+  // ✅ REVERTED — back to calling window.print() directly on this page,
+  // using the .af-printable / @media print rules in index.css (they
+  // already handle hiding everything else and showing just the report —
+  // no JS toggling needed, the CSS does it the moment print mode kicks
+  // in). The earlier new-tab/PDF/embedded-viewer detour turned into a
+  // chain of browser-plugin quirks (favicon, blank first print, Ctrl+P
+  // stealing focus) that were worse than the problem it was meant to
+  // solve. Note: window.print() is a native desktop-browser feature — it
+  // won't do anything on plenty of phones/tablets or in-app webviews; if
+  // that becomes a problem again, "Download PDF" is the reliable
+  // cross-device fallback.
+  const handlePrintReport = () => {
+    flushSync(() => setGeneratedAt(new Date()))
+    window.print()
   }
 
   const handleDownloadWord = async () => {
@@ -1198,17 +1161,17 @@ export default function AdminReportsPage() {
           <p className="text-sm text-gray-500 mt-1">Average visitor ratings by month, attraction, and attraction bundle.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={handleDownloadPdf} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
+          <button onClick={handleDownloadPdf} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord}
             className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
             {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} Download PDF
           </button>
-          <button onClick={handleDownloadWord} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
+          <button onClick={handleDownloadWord} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord}
             className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
             {downloadingWord ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Download Word
           </button>
-          <button onClick={handlePrintReport} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
+          <button onClick={handlePrintReport} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50">
-            {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print report
+            <Printer className="w-4 h-4" /> Print report
           </button>
         </div>
       </div>
