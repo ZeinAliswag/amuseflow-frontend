@@ -852,6 +852,7 @@ export default function AdminReportsPage() {
   const [generatedAt, setGeneratedAt] = useState(() => new Date())
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [downloadingWord, setDownloadingWord] = useState(false)
+  const [printing, setPrinting] = useState(false)
 
   // ── Breakdown table sort + pagination (client-side — the list of
   // Attractions/Bundles is small enough that a second server round trip
@@ -1102,18 +1103,48 @@ export default function AdminReportsPage() {
     }
   }
 
-  // ✅ REVERTED — back to calling window.print() directly on this page,
-  // using the .af-printable / @media print rules in index.css (they
-  // already handle hiding everything else and showing just the report —
-  // no JS toggling needed, the CSS does it the moment print mode kicks
-  // in). The earlier new-tab/PDF/embedded-viewer detour turned into a
-  // chain of browser-plugin quirks (favicon, blank first print, Ctrl+P
-  // stealing focus) that were worse than the problem it was meant to
-  // solve. Note: window.print() is a native desktop-browser feature — it
-  // won't do anything on plenty of phones/tablets or in-app webviews; if
-  // that becomes a problem again, "Download PDF" is the reliable
-  // cross-device fallback.
-  const handlePrintReport = () => {
+  // ✅ CHANGED — window.print() (via the .af-printable / @media print
+  // rules in index.css) stays the default: it works natively on desktop
+  // Windows/Mac and on full mobile browsers (iOS Safari, Android Chrome).
+  // But on a touch device the far more consistent path to an actual
+  // printed page is the OS's own Share Sheet — AirPrint on iOS, the
+  // system Print Service on Android — since it always finds whatever
+  // printer that device already has set up, where an in-page print
+  // preview sometimes falls flat. So on touch devices that support
+  // sharing a file (iOS 15+/modern Android Chrome), "Print report" builds
+  // the same PDF as "Download PDF" and hands it to the share sheet, which
+  // has "Print" as one of its own actions. Anything else (desktop, or a
+  // touch device without file-sharing support) just calls window.print().
+  const handlePrintReport = async () => {
+    const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean }
+
+    if (isTouchDevice && nav.share && nav.canShare) {
+      try {
+        setPrinting(true)
+        const pdf = await buildReportPdf()
+        if (pdf) {
+          const file = new File(
+            [pdf.output('blob') as Blob],
+            `AmuseFlow Rating Report - ${periodLabel}.pdf`,
+            { type: 'application/pdf' }
+          )
+          if (nav.canShare({ files: [file] })) {
+            await nav.share({ files: [file], title: `AmuseFlow Rating Report - ${periodLabel}` })
+            return // OS share sheet is open (with its own Print action) — done
+          }
+        }
+      } catch (e: any) {
+        // User dismissing the share sheet throws AbortError — that's a
+        // deliberate cancel, not a failure, so don't also pop window.print().
+        if (e?.name === 'AbortError') return
+        // Any other failure: fall through below and try the plain browser
+        // print as a last resort instead of leaving the button dead.
+      } finally {
+        setPrinting(false)
+      }
+    }
+
     flushSync(() => setGeneratedAt(new Date()))
     window.print()
   }
@@ -1161,17 +1192,17 @@ export default function AdminReportsPage() {
           <p className="text-sm text-gray-500 mt-1">Average visitor ratings by month, attraction, and attraction bundle.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={handleDownloadPdf} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord}
+          <button onClick={handleDownloadPdf} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
             className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
             {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} Download PDF
           </button>
-          <button onClick={handleDownloadWord} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord}
+          <button onClick={handleDownloadWord} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
             className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
             {downloadingWord ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Download Word
           </button>
-          <button onClick={handlePrintReport} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord}
+          <button onClick={handlePrintReport} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50">
-            <Printer className="w-4 h-4" /> Print report
+            {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print report
           </button>
         </div>
       </div>
