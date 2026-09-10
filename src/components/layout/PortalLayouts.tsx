@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, NavLink } from 'react-router-dom'
 import {
   LogOut, ChevronDown, History, KeyRound, X, Loader2,
   Calendar, CheckCircle2, Filter, Bell, CheckCheck,
   Circle, Pencil, Lock, Ticket, Users, ClipboardList,
   Search, ChevronLeft, ChevronRight, CalendarDays, Tag, FileText, User, Clock,
-  XCircle, Wallet, PartyPopper, Star
+  XCircle, Wallet, PartyPopper, Star, Compass
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import api, { notificationApi } from '../../services/api'
@@ -1133,9 +1133,40 @@ function NotificationBell() {
   )
 }
 
+// ── Visitor nav tabs — Browse vs. My Bookings, sitting directly under the
+// sticky h-16 header (top-16 matches its height). Visitor-only: the Ride
+// Attendant portal has no equivalent multi-page split yet, so PortalHeader
+// only renders this when a layout explicitly passes it in. ──
+function VisitorNavTabs() {
+  const tabs = [
+    { to: '/visitor', label: 'Browse', icon: Compass, end: true },
+    { to: '/visitor/bookings', label: 'My Bookings', icon: Ticket, end: false },
+  ]
+  return (
+    <div className="sticky top-16 z-20 bg-white border-b border-gray-200 shadow-sm">
+      <div className="px-3 sm:px-6 lg:px-8 flex items-center gap-1">
+        {tabs.map(t => (
+          <NavLink key={t.to} to={t.to} end={t.end}
+            className={({ isActive }) =>
+              `flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                isActive
+                  ? 'border-emerald-600 text-emerald-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-200'
+              }`
+            }>
+            <t.icon className="w-4 h-4" />
+            {t.label}
+          </NavLink>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function PortalHeader({
   portalLabel, portalIcon, accentColor, avatarColor, roleLabel, roleBadgeColor, children,
-  iconWrapperClassName = 'w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center'
+  iconWrapperClassName = 'w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center',
+  navTabs
 }: {
   portalLabel: string
   portalIcon: ReactNode
@@ -1145,6 +1176,7 @@ function PortalHeader({
   roleBadgeColor: string
   children: ReactNode
   iconWrapperClassName?: string
+  navTabs?: ReactNode
 }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -1257,6 +1289,7 @@ function PortalHeader({
           </div>
         </div>
       </header>
+      {navTabs}
       <main>{children}</main>
 
       {showActivity && (
@@ -1288,7 +1321,8 @@ export function VisitorLayout({ children }: { children: ReactNode }) {
       accentColor="bg-emerald-600"
       avatarColor="bg-emerald-700"
       roleLabel="Visitor"
-      roleBadgeColor="bg-emerald-700/50 text-white">
+      roleBadgeColor="bg-emerald-700/50 text-white"
+      navTabs={<VisitorNavTabs />}>
       {children}
     </PortalHeader>
   )

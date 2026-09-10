@@ -3,13 +3,13 @@ import {
   Ticket, CheckCircle2, Clock, XCircle,
   Users, Calendar, ChevronLeft, ChevronRight, ChevronDown,
   Search, MapPin, ZoomIn, X, Loader2, ArrowLeft,
-  UserCog, CalendarDays, AlarmClock,
+  UserCog, AlarmClock,
   FerrisWheel, Tag, PackageCheck, Star, Ruler, Cake, Weight,
   Filter, Banknote, SortAsc, SortDesc, Type, Maximize2, LayoutGrid,
   Baby, Backpack, Briefcase
 } from 'lucide-react'
-import type { Booking, Ride, RidePromo, PromoRideItem, BookingPromoItem, PaginationRequest, RideValidationSettings } from '../../types'
-import api, { promoApi, bookingApi, reviewApi, settingsApi } from '../../services/api'
+import type { Ride, RidePromo, PromoRideItem, PaginationRequest, RideValidationSettings } from '../../types'
+import api, { promoApi, bookingApi, settingsApi } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 
@@ -36,16 +36,6 @@ function fmtTime(t?: string) {
   return new Date(`1970-01-01T${t}`).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
-// Formats a full ISO datetime ("2026-07-11T00:23:58.0933333") into
-// "Jul 11, 12:23 AM" — date + 12-hour time together, instead of the raw
-// ISO string dumped straight into the DOM.
-function fmtDateTime(iso?: string) {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return null
-  return d.toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
-}
-
 // Pulls the friendliest error message out of an axios error — handles both
 // { message } responses and ASP.NET Core ModelState validation payloads.
 function getErrorMessage(e: any, fallback = 'Something went wrong.') {
@@ -60,23 +50,13 @@ function getErrorMessage(e: any, fallback = 'Something went wrong.') {
   return fallback
 }
 
+// Used by promoIsAvailable below (a promo is bookable only strictly before
+// its date) — the fuller fmtShort/fmtLong/fmtRange date-range formatters
+// used to live here too, but moved to MyBookings.tsx along with the
+// booking-list date-range filter that was their only caller.
 const toISO = (d: Date) => {
   const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0')
   return `${y}-${m}-${day}`
-}
-// ✅ CHANGED — added year so a filtered date range in a different year (e.g.
-// picking a past/future year in the calendar) doesn't render ambiguously as
-// just "Jan 9 – Jan 10" with no indication of which year.
-const fmtShort = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric' })
-const fmtLong = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
-// ✅ CHANGED — a same-year range only needs the year once, at the end
-// ("Jan 9 – Jan 10, 1974"); a range spanning two different years needs it on
-// both ends ("Jan 9, 1974 – Jan 10, 1978") so it isn't ambiguous.
-function fmtRange(from: string, to: string, sep = ' – ') {
-  if (from === to) return fmtLong(from)
-  return from.slice(0, 4) === to.slice(0, 4)
-    ? `${fmtShort(from)}${sep}${fmtLong(to)}`
-    : `${fmtLong(from)}${sep}${fmtLong(to)}`
 }
 
 // ── Schedule type ─────────────────────────────────────────────
@@ -90,7 +70,6 @@ interface Schedule {
 
 // ── Confirm Modal ──────────────────────────────────────────────
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const WEEKDAYS = ['Su','Mo','Tu','We','Th','Fr','Sa']
 
 // ── Call time badge — styled like a notification chip (pill background +
 // border) instead of plain colored text, so it actually draws the eye. ──
@@ -158,75 +137,6 @@ function PromoRidesModal({ promo, onClose }: { promo: RidePromo; onClose: () => 
 
         <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-3">
           {promo.rides.length > RIDES_MODAL_PAGE_SIZE ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Page {page} of {totalPages}</span>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-                  className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors">
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-                  className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors">
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ) : <div />}
-          <button onClick={onClose} className="px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-medium hover:bg-gray-700 transition-colors">
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ✅ NEW — same idea, but for an already-BOOKED bundle (My Bookings row):
-// BookingPromoItem has no slots/status field since nothing is being picked
-// anymore, so this shows just the locked-in schedule + call time per ride.
-function BookingRidesModal({ name, promoDate, rides, onClose }: {
-  name: string; promoDate?: string; rides: BookingPromoItem[]; onClose: () => void
-}) {
-  const [page, setPage] = useState(1)
-  const totalPages = Math.max(1, Math.ceil(rides.length / RIDES_MODAL_PAGE_SIZE))
-  const pageRides = rides.slice((page - 1) * RIDES_MODAL_PAGE_SIZE, page * RIDES_MODAL_PAGE_SIZE)
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <div className="min-w-0">
-            <div className="font-bold text-gray-900 text-sm truncate">{name}</div>
-            <div className="text-xs text-gray-400">
-              {rides.length} attractions included{promoDate ? ` · ${promoDate.slice(0, 10)}` : ''}
-            </div>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors flex-shrink-0">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="overflow-y-auto flex-1 p-4 space-y-3">
-          {pageRides.map(r => (
-            <div key={r.rideId} className="bg-gray-50 rounded-xl p-3.5 border border-gray-100">
-              <div className="font-semibold text-gray-900 text-sm mb-2">{r.rideName}</div>
-              <div className="flex items-center gap-4 text-xs text-gray-500 mb-2 flex-wrap">
-                <div className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
-                  {r.scheduleDate.slice(0, 10)}
-                </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  {fmtTime(r.startTime)} – {fmtTime(r.endTime)}
-                </div>
-              </div>
-              <CallTimeBadge time={r.callTime} className="text-[11px]" />
-            </div>
-          ))}
-        </div>
-
-        <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-3">
-          {rides.length > RIDES_MODAL_PAGE_SIZE ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500">Page {page} of {totalPages}</span>
               <div className="flex items-center gap-1">
@@ -401,23 +311,6 @@ function RidePageSizeCombobox({ value, onChange }: { value: number; onChange: (v
   )
 }
 
-// ✅ NEW — skeleton row mirroring a real "My Bookings" row's shape (thumb,
-// name/code block, meta line). Shown while paging/filtering that list
-// instead of a centered spinner.
-function BookingRowSkeleton() {
-  return (
-    <div className="flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 animate-pulse">
-      <div className="w-10 h-10 rounded-xl bg-gray-200 flex-shrink-0" />
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <div className="h-3.5 bg-gray-200 rounded w-32" />
-        <div className="h-5 bg-gray-100 rounded w-28" />
-        <div className="h-2.5 bg-gray-100 rounded w-48" />
-      </div>
-      <div className="h-4 bg-gray-200 rounded w-14 flex-shrink-0" />
-    </div>
-  )
-}
-
 // ✅ NEW — skeleton card matching the mid-small ride card's shape (image
 // block, title bar, description lines, badge pills, button bar). Shown
 // instead of a centered spinner while paging/sorting/filtering the rides
@@ -587,115 +480,6 @@ function MonthYearPicker({ month, year, onChange, accent = 'emerald' }: {
           </div>
         </>
       )}
-    </div>
-  )
-}
-
-function ConfirmModal({ title, message, confirmLabel, danger, onConfirm, onCancel, loading }: {
-  title: string; message: string; confirmLabel: string; danger?: boolean
-  onConfirm: () => void; onCancel: () => void; loading?: boolean
-}) {
-  return (
-    <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${danger ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
-          {danger ? <XCircle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
-        </div>
-        <div className="text-[15px] font-bold text-gray-900 mb-1">{title}</div>
-        <div className="text-[12px] text-gray-500 mb-6">{message}</div>
-        <div className="flex gap-2.5">
-          <button onClick={onCancel} disabled={loading}
-            className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
-            Cancel
-          </button>
-          <button onClick={onConfirm} disabled={loading}
-            className={`flex-1 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60 transition-colors ${
-              danger ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-            }`}>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ✅ NEW — read-only star row, used to show a rating that's already been
-// submitted (e.g. "You rated this ride"). Half-star-free — ratings are
-// always a whole 1-5 integer.
-function StarRatingDisplay({ rating, size = 'w-3.5 h-3.5' }: { rating: number; size?: string }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map(n => (
-        <Star key={n} className={`${size} ${n <= rating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`} />
-      ))}
-    </div>
-  )
-}
-
-// ✅ NEW — an OPTIONAL rating (1-5) + comment left on a completed + paid
-// ride booking. Never required — the visitor can always just close this
-// without submitting anything.
-function ReviewModal({ rideName, onSubmit, onCancel, loading }: {
-  rideName: string
-  onSubmit: (rating: number, comment: string) => void
-  onCancel: () => void
-  loading?: boolean
-}) {
-  const [rating, setRating] = useState(0)
-  const [hoverRating, setHoverRating] = useState(0)
-  const [comment, setComment] = useState('')
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-        <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-amber-100 text-amber-600">
-          <Star className="w-6 h-6" />
-        </div>
-        <div className="text-[15px] font-bold text-gray-900 mb-1">Rate "{rideName}"</div>
-        <div className="text-[12px] text-gray-500 mb-4">
-          Totally optional — leave a rating and/or a quick comment, or just close this.
-        </div>
-
-        <div className="flex items-center gap-1 mb-4">
-          {[1, 2, 3, 4, 5].map(n => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => setRating(n)}
-              onMouseEnter={() => setHoverRating(n)}
-              onMouseLeave={() => setHoverRating(0)}
-              className="p-0.5"
-            >
-              <Star className={`w-7 h-7 transition-colors ${
-                n <= (hoverRating || rating) ? 'fill-amber-400 text-amber-400' : 'text-gray-300'
-              }`} />
-            </button>
-          ))}
-        </div>
-
-        <textarea
-          value={comment}
-          onChange={e => setComment(e.target.value)}
-          placeholder="Anything you'd like to add? (optional)"
-          rows={3}
-          maxLength={1000}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-4 resize-none focus:outline-none focus:ring-2 focus:ring-amber-300"
-        />
-
-        <div className="flex gap-2.5">
-          <button onClick={onCancel} disabled={loading}
-            className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
-            Not now
-          </button>
-          <button
-            onClick={() => onSubmit(rating, comment.trim())}
-            disabled={loading || rating === 0}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60 transition-colors bg-amber-500 hover:bg-amber-600 text-white">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit review'}
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -1167,274 +951,6 @@ function Badge({ label }: { label: string }) {
 
 // ── Month/Year dropdown for the mini calendar below — jump straight to any
 // month or year, matching the pattern used elsewhere in the app. ──
-function MiniMonthYearDropdown({ year, month, onChange, onClose }: {
-  year: number; month: number
-  onChange: (year: number, month: number) => void
-  onClose: () => void
-}) {
-  const [viewYear, setViewYear] = useState(year)
-  const today = new Date()
-
-  return (
-    <>
-      <div className="fixed inset-0 z-30" onClick={onClose} />
-      <div className="absolute z-40 mt-2 left-1/2 -translate-x-1/2 w-72 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-          <button type="button" onClick={() => setViewYear(y => y - 1)}
-            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="font-bold text-gray-900 text-sm">{viewYear}</span>
-          <button type="button" onClick={() => setViewYear(y => y + 1)}
-            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="grid grid-cols-3 gap-2 p-4">
-          {MONTHS.map((m, i) => {
-            const isSelected = viewYear === year && i === month
-            const isCurrent = viewYear === today.getFullYear() && i === today.getMonth()
-            return (
-              <button key={m} type="button"
-                onClick={() => { onChange(viewYear, i); onClose() }}
-                className={`py-2 rounded-xl text-xs font-medium transition-colors ${
-                  isSelected
-                    ? 'bg-slate-700 text-white shadow-sm'
-                    : isCurrent
-                    ? 'bg-slate-50 text-slate-700 border border-slate-200'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}>
-                {m}
-              </button>
-            )
-          })}
-        </div>
-        <div className="px-4 pb-4">
-          <button type="button"
-            onClick={() => { onChange(today.getFullYear(), today.getMonth()); onClose() }}
-            className="w-full py-2 rounded-xl text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
-            Jump to today
-          </button>
-        </div>
-      </div>
-    </>
-  )
-}
-
-// ── Mini calendar grid — replaces plain native <input type="date"> fields
-// (which pop the browser's own mismatched-looking date picker) with a
-// custom-styled range picker matching the rest of the app. ──
-function MiniCalendar({ from, to, onChange }: {
-  from: string; to: string
-  onChange: (from: string, to: string) => void
-}) {
-  const base = from ? new Date(from + 'T00:00:00') : new Date()
-  const [viewMonth, setViewMonth] = useState(base.getMonth())
-  const [viewYear, setViewYear]   = useState(base.getFullYear())
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const todayISO = toISO(new Date())
-
-  const monthLabel = new Date(viewYear, viewMonth).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })
-  const firstWeekday = new Date(viewYear, viewMonth, 1).getDay()
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
-
-  const cells: (number | null)[] = [
-    ...Array.from({ length: firstWeekday }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ]
-
-  const dateISO = (d: number) => toISO(new Date(viewYear, viewMonth, d))
-
-  const gotoPrev = () => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1) } else setViewMonth(m => m - 1) }
-  const gotoNext = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1) } else setViewMonth(m => m + 1) }
-
-  const handlePick = (d: number) => {
-    const iso = dateISO(d)
-    if (!from || (from && to)) {
-      onChange(iso, '')
-    } else {
-      onChange(iso < from ? iso : from, iso < from ? from : iso)
-    }
-  }
-
-  const gotoToday = () => {
-    const t = new Date()
-    setViewMonth(t.getMonth()); setViewYear(t.getFullYear())
-    onChange(todayISO, todayISO)
-  }
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4">
-      {/* Month header */}
-      <div className="flex items-center justify-between mb-3">
-        <button type="button" onClick={gotoPrev}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-        <div className="relative">
-          <button type="button" onClick={() => setPickerOpen(p => !p)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors">
-            <Calendar className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-sm font-bold text-gray-900">{monthLabel}</span>
-            <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${pickerOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {pickerOpen && (
-            <MiniMonthYearDropdown
-              year={viewYear} month={viewMonth}
-              onChange={(y, m) => { setViewYear(y); setViewMonth(m) }}
-              onClose={() => setPickerOpen(false)}
-            />
-          )}
-        </div>
-        <button type="button" onClick={gotoNext}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Weekday header */}
-      <div className="grid grid-cols-7 mb-1">
-        {WEEKDAYS.map(w => (
-          <div key={w} className="text-[10px] font-semibold text-gray-400 text-center py-1">{w}</div>
-        ))}
-      </div>
-
-      {/* Day grid */}
-      <div className="grid grid-cols-7 gap-y-1">
-        {cells.map((d, i) => {
-          if (d === null) return <div key={`empty-${i}`} />
-          const iso = dateISO(d)
-          const isStart = iso === from
-          const isEnd = iso === to
-          const inRange = !!from && !!to && iso > from && iso < to
-          const isToday = iso === todayISO
-          return (
-            <div key={iso} className="flex items-center justify-center">
-              <button type="button" onClick={() => handlePick(d)}
-                className={`w-8 h-8 flex items-center justify-center text-xs rounded-full transition-colors ${
-                  isStart || isEnd
-                    ? 'bg-slate-700 text-white font-bold shadow-sm'
-                    : inRange
-                    ? 'bg-slate-100 text-slate-700 font-medium'
-                    : isToday
-                    ? 'border border-gray-400 text-gray-700 font-semibold'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}>
-                {d}
-              </button>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Footer — single full-width pill, matching the app's other pickers */}
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <button type="button" onClick={gotoToday}
-          className="w-full py-2.5 rounded-full text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">
-          Jump to today
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── Date Range Modal (centered dialog) ─────────────────────────
-function DateRangeModal({ from, to, onApply, onClose }: {
-  from: string; to: string
-  onApply: (from: string, to: string) => void
-  onClose: () => void
-}) {
-  const [tempFrom, setTempFrom] = useState(from)
-  const [tempTo, setTempTo] = useState(to)
-  const today = new Date()
-
-  const presets = [
-    { label: 'Today', get: () => { const d = toISO(today); return [d, d] as [string,string] } },
-    { label: 'Yesterday', get: () => { const d = new Date(today); d.setDate(d.getDate()-1); const s = toISO(d); return [s, s] as [string,string] } },
-    { label: 'Last 7 days', get: () => { const s = new Date(today); s.setDate(s.getDate()-6); return [toISO(s), toISO(today)] as [string,string] } },
-    { label: 'Last 30 days', get: () => { const s = new Date(today); s.setDate(s.getDate()-29); return [toISO(s), toISO(today)] as [string,string] } },
-    { label: 'This month', get: () => { const s = new Date(today.getFullYear(), today.getMonth(), 1); return [toISO(s), toISO(today)] as [string,string] } },
-  ]
-
-  const isActivePreset = (f: string, t: string) => tempFrom === f && tempTo === t
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center">
-              <CalendarDays className="w-5 h-5 text-slate-600" />
-            </div>
-            <div className="font-semibold text-gray-900 text-[14px]">Filter by date</div>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
-          <div>
-            <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Quick select</div>
-            <div className="grid grid-cols-2 gap-2">
-              {presets.map(p => {
-                const [f, t] = p.get()
-                const active = isActivePreset(f, t)
-                return (
-                  <button key={p.label} type="button"
-                    onClick={() => { setTempFrom(f); setTempTo(t) }}
-                    className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left ${
-                      active ? 'bg-slate-600 text-white border-slate-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                    }`}>
-                    {p.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div>
-            <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
-              Pick a date {tempFrom && tempTo ? `— ${fmtRange(tempFrom, tempTo, ' to ')}` : ''}
-            </div>
-            <MiniCalendar from={tempFrom} to={tempTo} onChange={(f, t) => { setTempFrom(f); setTempTo(t) }} />
-          </div>
-        </div>
-
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3 flex-shrink-0">
-          <button type="button" onClick={() => { setTempFrom(''); setTempTo('') }}
-            className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
-            Clear
-          </button>
-          <button type="button" onClick={() => { onApply(tempFrom, tempTo); onClose() }}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-slate-700 hover:bg-slate-800 transition-colors">
-            Apply
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Date Range Trigger Button ──────────────────────────────────
-function DateRangeButton({ from, to, onClick }: { from: string; to: string; onClick: () => void }) {
-  const label = !from && !to
-    ? 'All dates'
-    : from && to
-      ? fmtRange(from, to)
-      : from ? `From ${fmtLong(from)}` : `Until ${fmtLong(to)}`
-
-  return (
-    <button type="button" onClick={onClick}
-      className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
-        (from || to) ? 'bg-slate-600 text-white border-transparent shadow-sm' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-      }`}>
-      <Calendar className="w-3.5 h-3.5" />
-      {label}
-    </button>
-  )
-}
-
 export function VisitorDashboard() {
   const { user } = useAuth()
 
@@ -1507,47 +1023,18 @@ export function VisitorDashboard() {
   const [schedules, setSchedules]         = useState<Schedule[]>([])
   const [schedLoading, setSchedLoading]   = useState(false)
 
-  // bookings
-  const [bookings, setBookings]   = useState<Booking[]>([])
-  const [bookPag, setBookPag]     = useState({ currentPage:1, totalPages:1, totalCount:0, pageSize:5 })
-  const [bookParams, setBookParams] = useState<PaginationRequest>({ page:1, pageSize:5 })
-  const [bookLoading, setBookLoading] = useState(true)
+  // ✅ CHANGED — the full searchable/filterable/paginated booking list (plus
+  // cancel/review/view-details) moved to its own page, MyBookings.tsx,
+  // reachable from the Visitor nav tabs (see VisitorNavTabs in
+  // PortalLayouts.tsx) instead of a section at the bottom of this page. All
+  // this page keeps is a lightweight "your activity this month" stats
+  // summary, fed by its own slim fetch below — no pagination/search/filter
+  // state needed for that.
   const [bookStats, setBookStats] = useState({ total:0, upcoming:0, completed:0, cancelled:0 })
   const [allBookingsRaw, setAllBookingsRaw] = useState<any[]>([])
 
-  // ✅ NEW — pressing the "Bundle · N attractions" pill on a My Bookings row
-  // opens a modal listing that booking's locked-in included rides.
-  const [viewBookingRides, setViewBookingRides] = useState<Booking | null>(null)
-
-  // ref used to scroll down to the bookings section
-  const bookingsSectionRef = useRef<HTMLDivElement>(null)
-
-  // ✅ NEW — pressing a pagination Prev/Next button used to leave the
-  // scroll position wherever it was (usually at the bottom, right on the
-  // pagination controls), so the newly-loaded page's first rows were
-  // scrolled off-screen above. Snap back to the top of the relevant list
-  // whenever its page number changes.
-  useEffect(() => {
-    ridesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [rideParams.page])
-
-  useEffect(() => {
-    bookingsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [bookParams.page])
-
-  // booking filters
-  const [bookSearch, setBookSearch]   = useState('')
-  const [bookDateFrom, setBookDateFrom] = useState('')
-  const [bookDateTo, setBookDateTo]     = useState('')
-  const [bookDateModalOpen, setBookDateModalOpen] = useState(false)
-
   // modals
   const [zoomSrc, setZoomSrc]           = useState<string|null>(null)
-  const [cancelTarget, setCancelTarget] = useState<Booking|null>(null)
-  const [cancelLoading, setCancelLoading] = useState(false)
-  // ✅ NEW — OPTIONAL rating/comment on a completed + paid booking.
-  const [reviewTarget, setReviewTarget] = useState<Booking|null>(null)
-  const [reviewLoading, setReviewLoading] = useState(false)
   // ✅ CHANGED — group bookings: bookTarget now also carries whatever's
   // needed to render the guest-list step (how many seats are left, and
   // whether this ride has a height/age restriction to collect/validate per guest).
@@ -1560,25 +1047,24 @@ export function VisitorDashboard() {
   const [bookingLoading, setBookingLoading] = useState(false)
 
   useEffect(() => { fetchRides() }, [rideParams])
-  // ✅ FIXED — fetchBookings used to only run once on mount/filter-change,
-  // so booking status changes went stale the moment you landed on the
-  // dashboard — a booking approved by an admin 5 minutes into your session
-  // wouldn't show up until you changed a filter or re-logged in. Now it also
-  // re-polls every 5s, same pattern as the Admin sidebar's pending-bookings
-  // badge (AdminLayout.tsx). (The old local "unseen" bell badge that lived
-  // in the hero was removed — real-time notifications now live in the
-  // header bell.)
+  // ✅ NEW — pressing a pagination Prev/Next button used to leave the
+  // scroll position wherever it was (usually at the bottom, right on the
+  // pagination controls), so the newly-loaded page's first rows were
+  // scrolled off-screen above. Snap back to the top of the rides list
+  // whenever its page number changes.
   useEffect(() => {
-    fetchBookings()
-    // ✅ FIXED — this background poll used to call fetchBookings() the same
-    // way the initial load does, which set bookLoading(true) every 5s and
-    // swapped the whole My Bookings list out for a full spinner — visible as
-    // a random "it flickers back to loading" every time the poll happened to
-    // land while someone was looking. Silent polls now skip the spinner and
-    // just swap in fresh data once it arrives.
-    const interval = setInterval(() => fetchBookings({ silent: true }), 5_000)
+    ridesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [rideParams.page])
+
+  // ✅ CHANGED — was fetchBookings (paginated list + raw list together, for
+  // both the My Bookings section AND these stats). Now just the slim raw
+  // fetch the stats need, polling every 5s same as before so an admin
+  // approving a booking mid-session still shows up without a refresh.
+  useEffect(() => {
+    fetchBookingStats()
+    const interval = setInterval(() => fetchBookingStats({ silent: true }), 5_000)
     return () => clearInterval(interval)
-  }, [bookParams, bookSearch, bookDateFrom, bookDateTo])
+  }, [])
   useEffect(() => { fetchPromos() }, [])
 
   const fetchPromos = async () => {
@@ -1628,7 +1114,7 @@ export function VisitorDashboard() {
       toast.success(`Booked promo "${promoBookTarget.name}" for ${guests.length} guest(s)!`)
       setPromoBookTarget(null)
       setSelectedPromo(null)
-      fetchBookings()
+      fetchBookingStats()
       fetchPromos()
     } catch (e: any) {
       setPromoBookTarget(null)
@@ -1673,46 +1159,19 @@ export function VisitorDashboard() {
     finally { setSchedLoading(false) }
   }
 
-  const fetchBookings = async (opts: { silent?: boolean } = {}) => {
-    if (!opts.silent) setBookLoading(true)
+  // ✅ CHANGED — was fetchBookings: fetched both a paginated/searchable page
+  // (for the on-page My Bookings list) AND a 500-row raw list (for the
+  // month stats) together. The paginated half moved to MyBookings.tsx along
+  // with the list it fed; this page only ever needed the raw list, to
+  // compute bookStats below.
+  const fetchBookingStats = async (opts: { silent?: boolean } = {}) => {
     try {
-      const [pageRes, allRes] = await Promise.all([
-        api.get('/api/booking/my-bookings', {
-          params: {
-            ...bookParams,
-            search: bookSearch || undefined,
-            fromDate: bookDateFrom || undefined,
-            toDate: bookDateTo || undefined,
-          }
-        }),
-        api.get('/api/booking/my-bookings', { params: { page: 1, pageSize: 500 } }),
-      ])
-      const d = pageRes.data?.data?.data ?? pageRes.data?.data ?? pageRes.data ?? []
-      let list: Booking[] = Array.isArray(d) ? d : []
-      // client-side fallback filter in case the API doesn't support search/fromDate/toDate yet
-      if (bookSearch) {
-        const q = bookSearch.toLowerCase()
-        list = list.filter(b =>
-          b.rideName?.toLowerCase().includes(q) ||
-          b.bookingCode?.toLowerCase().includes(q)
-        )
-      }
-      if (bookDateFrom) list = list.filter(b => (b.scheduleDate ?? '') >= bookDateFrom)
-      if (bookDateTo)   list = list.filter(b => (b.scheduleDate ?? '') <= bookDateTo)
-      setBookings(list)
-      const pg = pageRes.data?.data?.pagination ?? pageRes.data?.pagination
-      if (pg) setBookPag(pg)
-      // store raw list; monthly stats are recomputed reactively below
-      const all: any[] = allRes.data?.data?.data ?? allRes.data?.data ?? allRes.data ?? []
+      const res = await api.get('/api/booking/my-bookings', { params: { page: 1, pageSize: 500 } })
+      const all: any[] = res.data?.data?.data ?? res.data?.data ?? res.data ?? []
       setAllBookingsRaw(all)
     } catch (e: any) {
-      // Silent background polls stay quiet on a transient failure (e.g. a
-      // dropped connection mid-poll) instead of popping an error toast every
-      // 5s — the next poll just tries again. Real loads (first mount, filter
-      // changes) still surface the error like before.
-      if (!opts.silent) toast.error(getErrorMessage(e, 'Failed to load bookings.'))
+      if (!opts.silent) toast.error(getErrorMessage(e, 'Failed to load your booking activity.'))
     }
-    finally { if (!opts.silent) setBookLoading(false) }
   }
 
   // ✅ CHANGED — group bookings: now takes the guest list collected in
@@ -1726,56 +1185,15 @@ export function VisitorDashboard() {
       toast.success(`Booked "${bookTarget.rideName}" on ${bookTarget.date} for ${guests.length} guest(s)!`)
       setBookTarget(null)
       setSelectedRide(null)
-      fetchBookings()
+      fetchBookingStats()
       fetchRides()
     } catch (e: any) {
       toast.error(getErrorMessage(e, 'Booking failed.'))
     } finally { setBookingLoading(false) }
   }
 
-  const doCancel = async () => {
-    if (!cancelTarget) return
-    setCancelLoading(true)
-    try {
-      await api.put(`/api/booking/${cancelTarget.id}/cancel`)
-      toast.success('Booking cancelled.')
-      setCancelTarget(null); fetchBookings()
-    } catch (e: any) {
-      toast.error(getErrorMessage(e, 'Failed to cancel.'))
-    } finally { setCancelLoading(false) }
-  }
-
-  // ✅ NEW — OPTIONAL rating/comment on a completed + paid booking. Never
-  // required — ReviewModal's "Not now" just closes this with no request sent.
-  const doSubmitReview = async (rating: number, comment: string) => {
-    if (!reviewTarget) return
-    setReviewLoading(true)
-    try {
-      await reviewApi.create({ bookingId: reviewTarget.id, rating, comment: comment || undefined })
-      toast.success('Thanks for your review!')
-      setReviewTarget(null)
-      fetchBookings()
-    } catch (e: any) {
-      toast.error(getErrorMessage(e, 'Failed to submit review.'))
-    } finally { setReviewLoading(false) }
-  }
-
   const now = new Date()
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening'
-
-  // ✅ CHANGED — safety net so a booking can't be reviewed until the ride it
-  // covers has actually ended, even if its Status already shows Completed.
-  // This used to only cover promo bookings (every included ride must be
-  // over), but a single-ride booking had the same underlying gap: an
-  // attendant could mark it Completed the moment check-in opened — which
-  // for a ride whose call time is set well ahead of its start (e.g. call
-  // time 10:51 AM for a 1:50–2:00 PM ride) could be HOURS before the ride
-  // actually ran. Now checks the ride's own end time for a regular booking
-  // too, same as the promo case below.
-  const rideActuallyEnded = (b: Booking) =>
-    b.promoId
-      ? (b.includedRides ?? []).every(r => new Date(`${r.scheduleDate.slice(0, 10)}T${r.endTime}`) <= now)
-      : !b.scheduleDate || !b.endTime || new Date(`${b.scheduleDate.slice(0, 10)}T${b.endTime}`) <= now
 
   // ── Month filter for booking stats ──────────────────────────────
   const [filterMonth, setFilterMonth] = useState(now.getMonth())
@@ -2366,224 +1784,6 @@ export function VisitorDashboard() {
         )}
       </div>
 
-      {/* My Bookings */}
-      <div ref={bookingsSectionRef} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm scroll-mt-6">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-wrap gap-3">
-          <div>
-            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <Ticket className="w-5 h-5 text-emerald-500" /> My bookings
-            </h3>
-            <p className="text-xs text-gray-500">Your attraction reservation history.</p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative w-full sm:w-auto">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
-              <input value={bookSearch}
-                onChange={e => { setBookSearch(e.target.value); setBookParams(p => ({ ...p, page: 1 })) }}
-                placeholder="Search code or attraction..."
-                className="pl-9 pr-4 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 w-full sm:w-48 bg-gray-50" />
-            </div>
-            <DateRangeButton
-              from={bookDateFrom} to={bookDateTo}
-              onClick={() => setBookDateModalOpen(true)}
-            />
-            <span className="text-xs text-gray-400 font-medium">{bookPag.totalCount} total</span>
-          </div>
-        </div>
-        {bookLoading ? (
-          // ✅ CHANGED — was a centered spinner; now skeleton rows matching
-          // the real row shape, sized to the current page size.
-          <div className="divide-y divide-gray-50">
-            {Array.from({ length: bookParams.pageSize ?? 5 }).map((_, i) => <BookingRowSkeleton key={i} />)}
-          </div>
-        ) : bookings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-14 text-gray-400">
-            <Ticket className="w-14 h-14 mb-3 text-gray-200" />
-            <div className="font-semibold text-gray-500">No bookings found</div>
-            <div className="text-xs mt-1">
-              {bookSearch || bookDateFrom || bookDateTo ? 'Try adjusting your filters.' : 'Pick an attraction above to get started.'}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="divide-y divide-gray-50">
-              {bookings.map(b => (
-                <div key={b.id} className="flex flex-col px-4 sm:px-5 py-4 hover:bg-gray-50/60 transition-colors group">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-                  {b.promoId ? (
-                    // ── Promo booking — ONE booking row covering 2+ rides ──
-                    <div className="flex items-start gap-3 sm:contents">
-                      <div
-                        className="relative w-10 h-10 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
-                        onClick={() => { const u = getImageUrl(b.promoImagePath); if (u) setZoomSrc(u) }}>
-                        {b.promoImagePath ? (
-                          <img src={getImageUrl(b.promoImagePath)!} alt={b.promoName}
-                            className="w-full h-full object-cover"
-                            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                        ) : (
-                          <Tag className="w-5 h-5" />
-                        )}
-                      </div>
-                      <div className="flex-1 sm:flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                          <span className="font-semibold text-gray-900 text-sm">{b.promoName}</span>
-                          {/* ✅ CHANGED — was a plain "Bundle" badge with the
-                              full ride list dumped inline below; now a
-                              pressable "Bundle · N attractions" pill that
-                              opens a modal with the same info, matching the
-                              pill-opens-modal pattern used everywhere else. */}
-                          <button type="button"
-                            onClick={() => setViewBookingRides(b)}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-pink-50 text-pink-700 text-[10px] font-semibold border border-pink-100 hover:bg-pink-100 transition-colors">
-                            <PackageCheck className="w-3 h-3" /> Bundle · {b.includedRides?.length ?? 0} attractions
-                          </button>
-                        </div>
-                        <div className="font-mono text-xs text-gray-700 bg-gray-200 px-2 py-1 rounded font-semibold inline-block mb-1">
-                          {b.bookingCode}
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />{b.includedRides?.[0]?.scheduleDate.slice(0, 10) ?? '—'}
-                          </span>
-                          <CallTimeBadge time={b.includedRides?.[0]?.callTime} className="text-[11px] px-2 py-0.5" label="First ride call time" />
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-3 sm:contents">
-                      <div
-                        className="group/thumb relative w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
-                        onClick={() => { const u = getImageUrl(b.rideImagePath); if (u) setZoomSrc(u) }}>
-                        {b.rideImagePath ? (
-                          <>
-                            <img src={getImageUrl(b.rideImagePath)!} alt={b.rideName}
-                              className="w-full h-full object-cover"
-                              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                            <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover/thumb:opacity-100">
-                              <ZoomIn className="w-4 h-4 text-white" />
-                            </div>
-                          </>
-                        ) : (
-                          <FerrisWheel className="w-5 h-5" />
-                        )}
-                      </div>
-                      <div className="flex-1 sm:flex-1 min-w-0">
-                        <div className="font-semibold text-gray-900 text-sm mb-0.5">{b.rideName}</div>
-                        {b.rideDescription && (
-                          <div className="text-xs text-gray-400 line-clamp-1 mb-1">{b.rideDescription}</div>
-                        )}
-                        <div className="font-mono text-xs text-gray-700 bg-gray-200 px-2 py-1 rounded font-semibold inline-block mb-1">
-                          {b.bookingCode}
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {b.scheduleDate}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {b.startTime ? `${fmtTime(b.startTime)} – ${fmtTime(b.endTime)}` : '—'}
-                          </span>
-                          <CallTimeBadge time={b.callTime} className="text-[11px]" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Badge label={b.status} />
-                      <Badge label={b.paymentStatus} />
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      {/* ✅ FIXED — regular bookings: paymentAmount stays 0
-                          until an attendant actually collects it, so the
-                          ride's fixed price (ridePrice) is the "actual
-                          price" to show. Promo bookings have no separate
-                          price field, but their paymentAmount IS set to the
-                          promo price at booking time, so it's still correct
-                          there — hence the fallback. */}
-                      <div className="font-bold text-gray-900 text-sm">₱{fmt(b.ridePrice ?? b.paymentAmount)}</div>
-                      {/* ✅ FIXED — was dumping the raw ISO string (e.g.
-                          "2026-07-11T00:23:58.0933333") straight into the DOM.
-                          Now shows date + 12-hour time together via fmtDateTime. */}
-                      {b.paidAt && (
-                        <div className="text-[10px] text-gray-400 mt-0.5">Paid {fmtDateTime(b.paidAt)}</div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {b.status !== 'Completed' && b.status !== 'Cancelled' && b.status !== 'Rejected' && b.status !== 'Missed' && (
-                        <button onClick={() => setCancelTarget(b)} title="Cancel booking"
-                          className="flex items-center justify-center w-8 h-8 bg-white text-red-600 hover:bg-red-50 border border-red-200 rounded-xl transition-colors">
-                          <XCircle className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  </div>
-                  {/* ✅ CHANGED — an OPTIONAL rating on a completed + paid
-                      booking, regular ride OR Ride Promo alike. A promo
-                      booking gets exactly ONE review for the whole bundle
-                      (not one per included ride) — the backend leaves that
-                      review's RideId null so it never counts toward any
-                      single ride's average rating. Sits on its own
-                      full-width row below the main booking info (outside the
-                      sm:flex-row wrapper above), so it never gets squeezed
-                      onto the price/paid-date line. Shows the submitted
-                      rating once left; otherwise a prominent, clickable
-                      prompt to leave one. */}
-                  {b.status === 'Completed' && b.paymentStatus === 'Paid' && (
-                    b.review ? (
-                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-                        <div className="flex items-center gap-1 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 flex-shrink-0">
-                          <StarRatingDisplay rating={b.review.rating} />
-                        </div>
-                        <span className="text-[11px] text-gray-400">
-                          {b.promoId ? 'You rated this bundle' : 'You rated this attraction'}
-                        </span>
-                        {b.review.comment && (
-                          <span className="text-[11px] text-gray-400 truncate italic">— "{b.review.comment}"</span>
-                        )}
-                      </div>
-                    ) : rideActuallyEnded(b) ? (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <button onClick={() => setReviewTarget(b)}
-                          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 active:scale-[0.98] border border-amber-200 rounded-xl text-amber-700 text-xs font-semibold transition-all shadow-sm">
-                          <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                          Leave a review
-                          <span className="text-amber-500 font-normal">(optional)</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1.5 text-[11px] text-gray-400">
-                        <Clock className="w-3.5 h-3.5" />
-                        {b.promoId
-                          ? 'You can review this bundle once every included attraction is over.'
-                          : `You can review this attraction once it ends${b.endTime ? ` at ${fmtTime(b.endTime)}` : ''}.`}
-                      </div>
-                    )
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50">
-              <span className="text-xs text-gray-500">Page <strong>{bookPag.currentPage}</strong> of <strong>{bookPag.totalPages}</strong></span>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setBookParams(p => ({ ...p, page: (p.page ?? 1) - 1 }))}
-                  disabled={(bookParams.page ?? 1) <= 1}
-                  className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors">
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button onClick={() => setBookParams(p => ({ ...p, page: (p.page ?? 1) + 1 }))}
-                  disabled={(bookParams.page ?? 1) >= bookPag.totalPages}
-                  className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors">
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
       {/* Confirm Book */}
       {/* ✅ CHANGED — one ticket per booking (1:1): a single-guest modal
           that collects a name (and age/height/weight, when the ride has a
@@ -2632,53 +1832,10 @@ export function VisitorDashboard() {
         )
       })()}
 
-      {/* Confirm Cancel */}
-      {/* ✅ FIXED — bundle bookings have no rideName (only promoName), so
-          the message below used to render the literal string "null" for
-          any promo booking's cancel confirmation. */}
-      {cancelTarget && (
-        <ConfirmModal
-          title="Cancel booking?"
-          message={`Cancel your booking for "${cancelTarget.promoId ? cancelTarget.promoName : cancelTarget.rideName}"? This cannot be undone.`}
-          confirmLabel="Yes, cancel"
-          danger
-          onConfirm={doCancel}
-          onCancel={() => setCancelTarget(null)}
-          loading={cancelLoading}
-        />
-      )}
-
-      {/* Leave a review — OPTIONAL, never blocks anything */}
-      {reviewTarget && (
-        <ReviewModal
-          rideName={reviewTarget.promoId ? (reviewTarget.promoName ?? 'this bundle') : (reviewTarget.rideName ?? 'this attraction')}
-          onSubmit={doSubmitReview}
-          onCancel={() => setReviewTarget(null)}
-          loading={reviewLoading}
-        />
-      )}
-
       {zoomSrc && <ImageZoom src={zoomSrc} onClose={() => setZoomSrc(null)} />}
 
       {viewRidesPromo && (
         <PromoRidesModal promo={viewRidesPromo} onClose={() => setViewRidesPromo(null)} />
-      )}
-
-      {viewBookingRides && (
-        <BookingRidesModal
-          name={viewBookingRides.promoName ?? 'Bundle'}
-          promoDate={viewBookingRides.includedRides?.[0]?.scheduleDate}
-          rides={viewBookingRides.includedRides ?? []}
-          onClose={() => setViewBookingRides(null)}
-        />
-      )}
-
-      {bookDateModalOpen && (
-        <DateRangeModal
-          from={bookDateFrom} to={bookDateTo}
-          onApply={(f, t) => { setBookDateFrom(f); setBookDateTo(t); setBookParams(p => ({ ...p, page: 1 })) }}
-          onClose={() => setBookDateModalOpen(false)}
-        />
       )}
     </div>
   )

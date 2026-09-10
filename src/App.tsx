@@ -16,6 +16,7 @@ import AdminLogsPage from './pages/admin/Logs'
 import AdminSettingsPage from './pages/admin/Settings'
 import AdminReportsPage from './pages/admin/Reports'
 import { VisitorDashboard } from './pages/visitor/VisitorDashboard'
+import { MyBookings } from './pages/visitor/MyBookings'
 import { AttendantDashboard } from './pages/attendant/AttendantDashboard'
 
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
@@ -105,6 +106,11 @@ function AppRoutes() {
       <Route path="/visitor" element={
         <ProtectedRoute roles={['Visitor']}>
           <VisitorLayout><VisitorDashboard /></VisitorLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/visitor/bookings" element={
+        <ProtectedRoute roles={['Visitor']}>
+          <VisitorLayout><MyBookings /></VisitorLayout>
         </ProtectedRoute>
       } />
 
