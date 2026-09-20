@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Lock, Eye, EyeOff, Sparkles, Shield, Ticket, CreditCard, Phone, PartyPopper, UserPlus, CheckCircle2, Circle, X } from 'lucide-react'
+import { User, Lock, Eye, EyeOff, Sparkles, Shield, Ticket, CreditCard, Phone, PartyPopper, UserPlus, CheckCircle2, Circle, X, FileText, KeyRound, ArrowLeft, ShieldCheck } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { Spinner } from '../components/shared'
@@ -83,6 +83,375 @@ function capitalizeName(raw: string) {
   return raw.replace(/(^|\s)([a-z])/g, (_, boundary, letter) => boundary + letter.toUpperCase())
 }
 
+// ✅ FIXED — was `e.response?.data?.message ?? fallback` everywhere in this
+// file. That only covers OUR OWN `ApiResponse.Fail(...)` error shape
+// (`{ message: "..." }`). It missed ASP.NET's automatic model-validation
+// 400s (thrown before a controller/service ever runs, e.g. a password DTO's
+// [RegularExpression] rejecting a character), which come back shaped as
+// `{ errors: { NewPassword: ["..."] } }` with no `message` field at all —
+// so those silently fell through to a useless generic fallback instead of
+// the actual reason. Same helper already duplicated in MyBookings.tsx /
+// VisitorDashboard.tsx / AttendantDashboard.tsx / admin/Bookings.tsx.
+function getErrorMessage(e: any, fallback = 'Something went wrong. Please try again.') {
+  const data = e?.response?.data
+  if (!data) return fallback
+  if (data.message) return data.message
+  if (data.errors) {
+    const firstKey = Object.keys(data.errors)[0]
+    const firstVal = firstKey ? data.errors[firstKey] : null
+    if (Array.isArray(firstVal) && firstVal.length) return firstVal[0]
+  }
+  return fallback
+}
+
+// ✅ NEW — Terms & Service content. The "terms of service" link on the
+// login card used to be a bare <span> with no onClick and no destination
+// at all — clickable-looking, but clicking it did nothing. Fixed by giving
+// it a real document, shown in a modal (rather than a separate route) so it
+// stays reachable even though Login is the only unauthenticated screen.
+const TERMS_LAST_UPDATED = 'September 20, 2026'
+const TERMS_SECTIONS: { title: string; body: string[] }[] = [
+  {
+    title: '1. Acceptance of Terms',
+    body: [
+      'By creating an account, signing in, or otherwise using AmuseFlow (the online reservation system for Glorious Fantasyland), you agree to be bound by these Terms & Services. If you do not agree, please do not use the system.',
+    ],
+  },
+  {
+    title: '2. Account Registration & Eligibility',
+    body: [
+      'Visitor accounts are self-registered and must include accurate, up-to-date information (name, username, and a valid contact number). You are responsible for keeping your login credentials confidential and for all activity that occurs under your account.',
+      'Admin and Ride Attendant accounts are created and managed by park staff and are for authorized personnel only.',
+    ],
+  },
+  {
+    title: '3. Bookings & Reservations',
+    body: [
+      'A booking reserves a specific ride or attraction bundle for a specific scheduled date and call time, subject to age, height, and weight restrictions shown at the time of booking. Submitting a booking does not guarantee approval — bookings begin as "Pending" and must be approved by an attendant or admin before they are confirmed.',
+      'You may cancel a booking yourself before it starts, subject to the cancellation terms below. Rescheduling is not supported through self-service; you will need to cancel and create a new booking for a different date or time.',
+    ],
+  },
+  {
+    title: '4. Payment',
+    body: [
+      'Payment for an approved booking is collected on-site by a ride attendant before boarding — AmuseFlow does not process online payments. A booking that is rejected, or cancelled before payment was collected, has no payment obligation. If a booking was already paid before being cancelled, that payment record is kept for your reference and is not automatically refunded through the app; please raise refund questions with park staff directly.',
+    ],
+  },
+  {
+    title: '5. Cancellations & No-Shows',
+    body: [
+      'Visitors may cancel an approved booking before its scheduled time. Repeated no-shows (failing to arrive for an approved, paid booking) may result in restrictions on future bookings at the park\'s discretion.',
+    ],
+  },
+  {
+    title: '6. Ride Safety & Eligibility Restrictions',
+    body: [
+      'Certain rides and bundles enforce minimum/maximum age, height, and weight requirements for guest safety. These restrictions are displayed before you book and are strictly enforced by ride attendants at the point of boarding, regardless of whether a booking was approved. AmuseFlow and park staff reserve the right to deny boarding to any guest who does not meet a ride\'s posted safety requirements.',
+    ],
+  },
+  {
+    title: '7. User Conduct',
+    body: [
+      'You agree not to misuse the system — this includes creating bookings you do not intend to honor, submitting false information, attempting to access another user\'s account, or interfering with the normal operation of the platform.',
+    ],
+  },
+  {
+    title: '8. Reviews',
+    body: [
+      'Visitors may leave a rating and written review after completing a booking. Reviews should reflect your genuine experience. AmuseFlow reserves the right to remove reviews that are abusive, fraudulent, or unrelated to the ride experience.',
+    ],
+  },
+  {
+    title: '9. Notifications',
+    body: [
+      'By using AmuseFlow you consent to receive in-app notifications related to your bookings (approvals, rejections, cancellations, payment status, and schedule changes).',
+    ],
+  },
+  {
+    title: '10. Limitation of Liability',
+    body: [
+      'AmuseFlow is a reservation and queue-management tool. It does not replace posted park rules, ride operator instructions, or on-site safety briefings. Glorious Fantasyland is not liable for injury, loss, or damage arising from failure to follow posted ride restrictions or staff instructions.',
+    ],
+  },
+  {
+    title: '11. Changes to These Terms',
+    body: [
+      'These Terms & Services may be updated from time to time to reflect changes to the system or park policy. Continued use of AmuseFlow after an update constitutes acceptance of the revised terms.',
+    ],
+  },
+  {
+    title: '12. Contact',
+    body: [
+      'Questions about these terms can be directed to park staff at 0909-407-8694.',
+    ],
+  },
+]
+
+function TermsModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center">
+              <FileText className="w-5 h-5 text-rose-600" />
+            </div>
+            <div>
+              <div className="font-bold text-gray-900 text-[14px]">Terms & Services</div>
+              <div className="text-[10px] text-gray-400">Last updated {TERMS_LAST_UPDATED}</div>
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Close"
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
+          <p className="text-[12px] text-gray-500 leading-relaxed">
+            These Terms & Services govern your use of AmuseFlow, the online reservation system for Glorious Fantasyland. Please read them before booking a ride.
+          </p>
+          {TERMS_SECTIONS.map(s => (
+            <div key={s.title}>
+              <div className="text-[12.5px] font-bold text-gray-900 mb-1">{s.title}</div>
+              {s.body.map((p, i) => (
+                <p key={i} className="text-[12px] text-gray-600 leading-relaxed mb-1.5 last:mb-0">{p}</p>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 py-4 border-t border-gray-100 flex justify-end flex-shrink-0">
+          <button onClick={onClose}
+            className="px-5 py-2.5 rounded-xl text-sm font-medium text-white bg-gray-800 hover:bg-gray-900 transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ✅ NEW — Forgot Password. There's no email on file (this system uses
+// Username + a PH mobile ContactNumber — see backend User entity), so
+// there's no "check your inbox" step: identity is confirmed by matching
+// Username + ContactNumber, then the visitor sets a new password right
+// there in this same modal. Three internal steps: 'verify' -> 'reset' ->
+// 'done'. Deliberately a modal (not a route) so it stays reachable from the
+// login card without adding a public page.
+function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState<'verify' | 'reset' | 'done'>('verify')
+  const [loading, setLoading] = useState(false)
+
+  // Step 1 — identity
+  const [fpUsername, setFpUsername] = useState('')
+  const [fpContact, setFpContact] = useState('')
+  const [verifyError, setVerifyError] = useState('')
+
+  // Carried from step 1 into step 2
+  const [resetToken, setResetToken] = useState('')
+  const [fullName, setFullName] = useState('')
+
+  // Step 2 — new password
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [showNewPw, setShowNewPw] = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
+  const [resetError, setResetError] = useState('')
+
+  // ✅ FIXED — the backend only accepts letters, numbers, and @$!%*?& in a
+  // password (see ForgotPasswordResetRequest's [RegularExpression]). These
+  // checks used to only confirm the required categories were PRESENT, never
+  // that every character in the password was actually one of the allowed
+  // ones — so something like "(MyPass@100)" showed 4/4 green checks here,
+  // then got silently rejected server-side (ASP.NET's automatic model
+  // validation, which returns a different error shape than our own API
+  // responses — see getErrorMessage above) with an unhelpful generic error.
+  // The new last check catches that before it's ever submitted.
+  const pwChecks = [
+    { label: '8+ characters', ok: newPw.length >= 8 },
+    { label: '1 uppercase (A-Z)', ok: /[A-Z]/.test(newPw) },
+    { label: '1 number (0-9)', ok: /[0-9]/.test(newPw) },
+    { label: '1 special (@$!%*?&)', ok: /[@$!%*?&]/.test(newPw) },
+    { label: 'Only letters, numbers, @$!%*?&', ok: /^[A-Za-z\d@$!%*?&]+$/.test(newPw) },
+  ]
+
+  const doVerify = async () => {
+    setVerifyError('')
+    if (!fpUsername.trim()) { setVerifyError('Username is required.'); return }
+    const digits = fpContact.replace(/\D/g, '')
+    if (!/^09\d{9}$/.test(digits)) { setVerifyError('Enter a valid PH mobile number (e.g. 0912 345 6789).'); return }
+
+    setLoading(true)
+    try {
+      const { data } = await api.post('/api/auth/forgot-password/verify', {
+        username: fpUsername.trim(),
+        contactNumber: digits,
+      })
+      const payload = data?.data ?? data
+      setResetToken(payload.resetToken)
+      setFullName(payload.fullName)
+      setStep('reset')
+    } catch (e: any) {
+      setVerifyError(getErrorMessage(e))
+    } finally { setLoading(false) }
+  }
+
+  const doReset = async () => {
+    setResetError('')
+    if (!pwChecks.every(c => c.ok)) { setResetError('Password does not meet all requirements.'); return }
+    if (newPw !== confirmPw) { setResetError('Passwords do not match.'); return }
+
+    setLoading(true)
+    try {
+      await api.post('/api/auth/forgot-password/reset', {
+        resetToken,
+        newPassword: newPw,
+        confirmPassword: confirmPw,
+      })
+      setStep('done')
+    } catch (e: any) {
+      setResetError(getErrorMessage(e))
+    } finally { setLoading(false) }
+  }
+
+  const startOver = () => {
+    setStep('verify')
+    setResetToken(''); setFullName('')
+    setNewPw(''); setConfirmPw('')
+    setVerifyError(''); setResetError('')
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center">
+              {step === 'done' ? <ShieldCheck className="w-5 h-5 text-emerald-600" /> : <KeyRound className="w-5 h-5 text-rose-600" />}
+            </div>
+            <div>
+              <div className="font-bold text-gray-900 text-[14px]">
+                {step === 'verify' ? 'Forgot password' : step === 'reset' ? 'Set a new password' : 'Password reset'}
+              </div>
+              <div className="text-[10px] text-gray-400">
+                {step === 'verify' ? 'Step 1 of 2 — confirm it\'s you' : step === 'reset' ? `Step 2 of 2 — resetting for ${fullName}` : 'All done'}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Close"
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {step === 'verify' && (
+            <div className="space-y-4">
+              <p className="text-xs text-gray-500 leading-relaxed">
+                AmuseFlow accounts don't have an email on file, so we confirm it's you using your username and the mobile number registered to your account.
+              </p>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Username</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                  <input
+                    className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-400 transition-all"
+                    placeholder="e.g. john01"
+                    value={fpUsername}
+                    onChange={e => { setFpUsername(e.target.value); if (verifyError) setVerifyError('') }}
+                    onKeyDown={e => e.key === 'Enter' && doVerify()} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Registered contact number</label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                  <input
+                    className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-400 transition-all"
+                    placeholder="0912 345 6789" inputMode="numeric" maxLength={13}
+                    value={fpContact}
+                    onChange={e => { setFpContact(formatPHMobile(e.target.value)); if (verifyError) setVerifyError('') }}
+                    onKeyDown={e => e.key === 'Enter' && doVerify()} />
+                </div>
+              </div>
+              {verifyError && <p className="text-xs text-red-500">{verifyError}</p>}
+              <button onClick={doVerify} disabled={loading}
+                className="w-full py-2.5 bg-rose-500 text-white rounded-xl text-sm font-semibold hover:bg-rose-600 transition-all flex items-center justify-center gap-2 disabled:opacity-60 shadow-sm">
+                {loading ? <Spinner className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />} Verify account
+              </button>
+            </div>
+          )}
+
+          {step === 'reset' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">New password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                  <input
+                    className="w-full pl-9 pr-9 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-400 transition-all"
+                    type={showNewPw ? 'text' : 'password'} placeholder="Min. 8 characters"
+                    value={newPw} onChange={e => { setNewPw(e.target.value); if (resetError) setResetError('') }} />
+                  <button type="button" onClick={() => setShowNewPw(p => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                    {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Confirm new password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                  <input
+                    className="w-full pl-9 pr-9 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-400 transition-all"
+                    type={showConfirmPw ? 'text' : 'password'} placeholder="Re-enter new password"
+                    value={confirmPw} onChange={e => { setConfirmPw(e.target.value); if (resetError) setResetError('') }} />
+                  <button type="button" onClick={() => setShowConfirmPw(p => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                    {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-2 gap-1.5 text-[10px]">
+                {pwChecks.map(c => (
+                  <span key={c.label} className={`flex items-center gap-1 transition-colors ${c.label.startsWith('Only') ? 'col-span-2' : ''} ${c.ok ? 'text-emerald-600 font-semibold' : 'text-gray-400'}`}>
+                    {c.ok ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" /> : <Circle className="w-3.5 h-3.5 flex-shrink-0" />} {c.label}
+                  </span>
+                ))}
+              </div>
+              {confirmPw && newPw !== confirmPw && <div className="text-[10px] text-red-500">⚠ Passwords do not match</div>}
+              {resetError && <p className="text-xs text-red-500">{resetError}</p>}
+              <button onClick={doReset} disabled={loading}
+                className="w-full py-2.5 bg-rose-500 text-white rounded-xl text-sm font-semibold hover:bg-rose-600 transition-all flex items-center justify-center gap-2 disabled:opacity-60 shadow-sm">
+                {loading ? <Spinner className="w-4 h-4" /> : <KeyRound className="w-4 h-4" />} Reset password
+              </button>
+              <button type="button" onClick={startOver}
+                className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors">
+                <ArrowLeft className="w-3.5 h-3.5" /> Start over
+              </button>
+            </div>
+          )}
+
+          {step === 'done' && (
+            <div className="text-center py-2">
+              <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 className="w-7 h-7 text-emerald-600" />
+              </div>
+              <div className="text-sm font-bold text-gray-900 mb-1">Password reset successfully</div>
+              <div className="text-xs text-gray-500 mb-5">You can now sign in with your new password.</div>
+              <button onClick={onClose}
+                className="w-full py-2.5 bg-rose-500 text-white rounded-xl text-sm font-semibold hover:bg-rose-600 transition-all shadow-sm">
+                Back to sign in
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Login() {
   const [mode, setMode]       = useState<'login'|'register'>('login')
   const [showPw, setShowPw]   = useState(false)
@@ -92,6 +461,8 @@ export default function Login() {
   // beside the form, so instead of just hiding it outright it moves into a
   // slide-in drawer the visitor can pull open on demand (see below).
   const [infoOpen, setInfoOpen] = useState(false)
+  const [showTerms, setShowTerms] = useState(false)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
 
   const [username, setUsername]   = useState('')
   const [password, setPassword]   = useState('')
@@ -120,7 +491,7 @@ export default function Login() {
       else if (role === 'Ride Attendant') navigate('/attendant')
       else                                navigate('/visitor')
     } catch (e: any) {
-      toast.error(e.response?.data?.message ?? 'Invalid username or password.')
+      toast.error(getErrorMessage(e, 'Invalid username or password.'))
     } finally { setLoading(false) }
   }
 
@@ -145,7 +516,7 @@ export default function Login() {
       setMode('login')
       setUsername(regUser)
     } catch (e: any) {
-      toast.error(e.response?.data?.message ?? 'Registration failed.')
+      toast.error(getErrorMessage(e, 'Registration failed.'))
     } finally { setLoading(false) }
   }
 
@@ -199,7 +570,7 @@ export default function Login() {
                 <div>
                   <div className="flex justify-between mb-1.5">
                     <label className="text-xs font-semibold text-gray-700">Password</label>
-                    <span className="text-[10px] text-rose-600 cursor-pointer font-medium hover:underline">Forgot password?</span>
+                    <span className="text-[10px] text-rose-600 cursor-pointer font-medium hover:underline" onClick={() => setShowForgotPassword(true)}>Forgot password?</span>
                   </div>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
@@ -236,7 +607,7 @@ export default function Login() {
 
               <div className="text-[10px] text-gray-400 text-center mt-4">
                 By signing in you agree to our{' '}
-                <span className="text-rose-600 cursor-pointer hover:underline">terms of service.</span>
+                <span className="text-rose-600 cursor-pointer hover:underline" onClick={() => setShowTerms(true)}>terms of service.</span>
               </div>
 
               <div className="text-[11px] text-gray-500 text-center mt-3">
@@ -394,6 +765,9 @@ export default function Login() {
           <LoginInfoContent />
         </div>
       </div>
+
+      {showTerms && <TermsModal onClose={() => setShowTerms(false)} />}
+      {showForgotPassword && <ForgotPasswordModal onClose={() => setShowForgotPassword(false)} />}
     </div>
   )
 }

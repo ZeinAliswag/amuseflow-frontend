@@ -205,6 +205,9 @@ export default function AdminUsersPage() {
   const [confirmCreate, setConfirmCreate] = useState(false)
   const [createForm, setCreateForm] = useState({ firstName: '', lastName: '', username: '', contactNumber: '', password: '', role: 'Ride Attendant' })
   const [creating, setCreating]     = useState(false)
+  // ✅ NEW — duplicate-username errors from create-staff are shown inline
+  // under the Username field instead of as a toast (see doCreateStaff catch).
+  const [usernameError, setUsernameError] = useState('')
 
   // Edit modal
   const [editOpen, setEditOpen]     = useState(false)
@@ -293,6 +296,7 @@ export default function AdminUsersPage() {
     if (!/[a-z]/.test(createForm.password)) { toast.error('Password must have at least 1 lowercase letter.'); return }
     if (!/[0-9]/.test(createForm.password)) { toast.error('Password must have at least 1 number.'); return }
     if (!/[@$!%*?&]/.test(createForm.password)) { toast.error('Password must have at least 1 special character (@$!%*?&).'); return }
+    setUsernameError('')
     setConfirmCreate(true)
   }
   const doCreateStaff = async () => {
@@ -305,11 +309,21 @@ export default function AdminUsersPage() {
       toast.success(`${createForm.role} account created.`)
       setConfirmCreate(false)
       setCreateOpen(false)
+      setUsernameError('')
       setCreateForm({ firstName: '', lastName: '', username: '', contactNumber: '', password: '', role: 'Ride Attendant' })
       fetchUsers()
     } catch (e: any) {
       setConfirmCreate(false)
-      toast.error(e.response?.data?.message ?? 'Failed to create staff.')
+      const message: string = e.response?.data?.message ?? 'Failed to create staff.'
+      // ✅ FIXED — a duplicate account (backend: "Username is already taken.")
+      // used to surface as a toast; now shown inline under the Username
+      // field, right where the offending value lives, and the create form
+      // modal stays open so the admin can fix it without retyping everything.
+      if (/username/i.test(message) && /(taken|exists|already)/i.test(message)) {
+        setUsernameError(message)
+      } else {
+        toast.error(message)
+      }
     }
     finally { setCreating(false) }
   }
@@ -448,7 +462,7 @@ export default function AdminUsersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Manage users</h1>
           <p className="text-sm text-gray-500 mt-1">View all users, create staff, change roles and passwords.</p>
         </div>
-        <button onClick={() => setCreateOpen(true)}
+        <button onClick={() => { setUsernameError(''); setCreateOpen(true) }}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
           <Plus className="w-4 h-4" /> Create staff
         </button>
@@ -611,7 +625,7 @@ export default function AdminUsersPage() {
       </Card>
 
       {/* ── Create staff modal ── */}
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create staff account" size="sm">
+      <Modal open={createOpen} onClose={() => { setCreateOpen(false); setUsernameError('') }} title="Create staff account" size="sm">
         {/* ✅ CHANGED — noValidate so the browser's native validation bubble
             never appears; every check now runs in handleCreateStaff and
             reports via toast instead. */}
@@ -635,9 +649,12 @@ export default function AdminUsersPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Username <span className="text-red-500">*</span></label>
             <input required value={createForm.username}
-              onChange={e => setCreateForm({...createForm, username: e.target.value})}
+              onChange={e => { setCreateForm({...createForm, username: e.target.value}); if (usernameError) setUsernameError('') }}
               placeholder="juan_att"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300" />
+              className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors ${
+                usernameError ? 'border-red-400 focus:ring-red-200' : 'border-gray-300 focus:ring-primary-300'
+              }`} />
+            {usernameError && <p className="text-xs text-red-500 mt-1">{usernameError}</p>}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Contact number <span className="text-red-500">*</span></label>
@@ -666,7 +683,7 @@ export default function AdminUsersPage() {
             </select>
           </div>
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
-            <button type="button" onClick={() => setCreateOpen(false)}
+            <button type="button" onClick={() => { setCreateOpen(false); setUsernameError('') }}
               className="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
               Cancel
             </button>
