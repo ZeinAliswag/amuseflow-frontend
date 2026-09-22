@@ -383,6 +383,20 @@ export interface RiderCategoryPreset {
   updatedByAdminId?: number
 }
 
+// ✅ NEW — Terms & Services content, now admin-editable (Settings page)
+// instead of hardcoded in Login.tsx's TermsModal. `content` uses a
+// lightweight markdown-ish convention: a line starting with "## " begins a
+// new numbered section (its title); everything after it up to the next
+// "## " is that section's body, with a blank line splitting it into
+// separate paragraphs. See parseTermsContent (duplicated in Login.tsx and
+// admin/Settings.tsx, same per-file-helper convention used elsewhere in
+// this codebase).
+export interface TermsContent {
+  content: string
+  updatedAt: string
+  updatedByAdminId?: number
+}
+
 // ── Reports (admin-only rating analytics) ───────────────────────
 // One calendar month's worth of average-rating data. Months with no
 // reviews are still included (zero-filled by the backend) so the trend

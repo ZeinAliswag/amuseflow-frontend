@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { User, Lock, Eye, EyeOff, Sparkles, Shield, Ticket, CreditCard, Phone, PartyPopper, UserPlus, CheckCircle2, Circle, X, FileText, KeyRound, ArrowLeft, ShieldCheck } from 'lucide-react'
 import api from '../services/api'
@@ -104,90 +104,72 @@ function getErrorMessage(e: any, fallback = 'Something went wrong. Please try ag
   return fallback
 }
 
-// ✅ NEW — Terms & Service content. The "terms of service" link on the
-// login card used to be a bare <span> with no onClick and no destination
-// at all — clickable-looking, but clicking it did nothing. Fixed by giving
-// it a real document, shown in a modal (rather than a separate route) so it
-// stays reachable even though Login is the only unauthenticated screen.
-const TERMS_LAST_UPDATED = 'September 20, 2026'
-const TERMS_SECTIONS: { title: string; body: string[] }[] = [
-  {
-    title: '1. Acceptance of Terms',
-    body: [
-      'By creating an account, signing in, or otherwise using AmuseFlow (the online reservation system for Glorious Fantasyland), you agree to be bound by these Terms & Services. If you do not agree, please do not use the system.',
-    ],
-  },
-  {
-    title: '2. Account Registration & Eligibility',
-    body: [
-      'Visitor accounts are self-registered and must include accurate, up-to-date information (name, username, and a valid contact number). You are responsible for keeping your login credentials confidential and for all activity that occurs under your account.',
-      'Admin and Ride Attendant accounts are created and managed by park staff and are for authorized personnel only.',
-    ],
-  },
-  {
-    title: '3. Bookings & Reservations',
-    body: [
-      'A booking reserves a specific ride or attraction bundle for a specific scheduled date and call time, subject to age, height, and weight restrictions shown at the time of booking. Submitting a booking does not guarantee approval — bookings begin as "Pending" and must be approved by an attendant or admin before they are confirmed.',
-      'You may cancel a booking yourself before it starts, subject to the cancellation terms below. Rescheduling is not supported through self-service; you will need to cancel and create a new booking for a different date or time.',
-    ],
-  },
-  {
-    title: '4. Payment',
-    body: [
-      'Payment for an approved booking is collected on-site by a ride attendant before boarding — AmuseFlow does not process online payments. A booking that is rejected, or cancelled before payment was collected, has no payment obligation. If a booking was already paid before being cancelled, that payment record is kept for your reference and is not automatically refunded through the app; please raise refund questions with park staff directly.',
-    ],
-  },
-  {
-    title: '5. Cancellations & No-Shows',
-    body: [
-      'Visitors may cancel an approved booking before its scheduled time. Repeated no-shows (failing to arrive for an approved, paid booking) may result in restrictions on future bookings at the park\'s discretion.',
-    ],
-  },
-  {
-    title: '6. Ride Safety & Eligibility Restrictions',
-    body: [
-      'Certain rides and bundles enforce minimum/maximum age, height, and weight requirements for guest safety. These restrictions are displayed before you book and are strictly enforced by ride attendants at the point of boarding, regardless of whether a booking was approved. AmuseFlow and park staff reserve the right to deny boarding to any guest who does not meet a ride\'s posted safety requirements.',
-    ],
-  },
-  {
-    title: '7. User Conduct',
-    body: [
-      'You agree not to misuse the system — this includes creating bookings you do not intend to honor, submitting false information, attempting to access another user\'s account, or interfering with the normal operation of the platform.',
-    ],
-  },
-  {
-    title: '8. Reviews',
-    body: [
-      'Visitors may leave a rating and written review after completing a booking. Reviews should reflect your genuine experience. AmuseFlow reserves the right to remove reviews that are abusive, fraudulent, or unrelated to the ride experience.',
-    ],
-  },
-  {
-    title: '9. Notifications',
-    body: [
-      'By using AmuseFlow you consent to receive in-app notifications related to your bookings (approvals, rejections, cancellations, payment status, and schedule changes).',
-    ],
-  },
-  {
-    title: '10. Limitation of Liability',
-    body: [
-      'AmuseFlow is a reservation and queue-management tool. It does not replace posted park rules, ride operator instructions, or on-site safety briefings. Glorious Fantasyland is not liable for injury, loss, or damage arising from failure to follow posted ride restrictions or staff instructions.',
-    ],
-  },
-  {
-    title: '11. Changes to These Terms',
-    body: [
-      'These Terms & Services may be updated from time to time to reflect changes to the system or park policy. Continued use of AmuseFlow after an update constitutes acceptance of the revised terms.',
-    ],
-  },
-  {
-    title: '12. Contact',
-    body: [
-      'Questions about these terms can be directed to park staff at 0909-407-8694.',
-    ],
-  },
-]
+// ✅ CHANGED — Terms & Services content used to be hardcoded right here
+// (TERMS_SECTIONS/TERMS_LAST_UPDATED constants). The "terms of service"
+// link on the login card used to be a bare <span> with no onClick at all
+// — fixed first by giving it a real document in a modal, and now made
+// dynamic: an Admin can edit the content from Settings → Terms & Services
+// without a code change or redeploy, and this modal fetches the current
+// version from the backend every time it's opened.
+//
+// `content` uses a lightweight, human-editable convention rather than a
+// nested JSON structure: a line starting with "## " begins a new numbered
+// section (its title); everything after it up to the next "## " is that
+// section's body, with a blank line splitting it into separate paragraphs.
+// Same parsing logic is duplicated in admin/Settings.tsx (for its live
+// preview) — matches this codebase's established per-file helper
+// convention rather than a shared utils module.
+function parseTermsContent(raw: string): { title: string; body: string[] }[] {
+  const lines = raw.split(/\r?\n/)
+  const sections: { title: string; body: string[] }[] = []
+  let current: { title: string; lines: string[] } | null = null
+
+  const flush = () => {
+    if (!current) return
+    const paragraphs = current.lines
+      .join('\n')
+      .split(/\n\s*\n/)
+      .map(p => p.replace(/\s*\n\s*/g, ' ').trim())
+      .filter(Boolean)
+    sections.push({ title: current.title, body: paragraphs })
+  }
+
+  for (const line of lines) {
+    if (line.startsWith('## ')) {
+      flush()
+      current = { title: line.slice(3).trim(), lines: [] }
+    } else if (current) {
+      current.lines.push(line)
+    }
+  }
+  flush()
+
+  return sections
+}
 
 function TermsModal({ onClose }: { onClose: () => void }) {
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [sections, setSections] = useState<{ title: string; body: string[] }[]>([])
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const { data } = await api.get('/api/termscontent')
+      const payload = data?.data ?? data
+      setSections(parseTermsContent(payload.content ?? ''))
+      setUpdatedAt(payload.updatedAt ?? null)
+    } catch (e: any) {
+      setLoadError(getErrorMessage(e, 'Failed to load Terms & Services. Please try again.'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
   return (
     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
@@ -198,7 +180,9 @@ function TermsModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <div className="font-bold text-gray-900 text-[14px]">Terms & Services</div>
-              <div className="text-[10px] text-gray-400">Last updated {TERMS_LAST_UPDATED}</div>
+              <div className="text-[10px] text-gray-400">
+                {updatedAt ? `Last updated ${new Date(updatedAt).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}` : ' '}
+              </div>
             </div>
           </div>
           <button onClick={onClose} aria-label="Close"
@@ -208,17 +192,33 @@ function TermsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
-          <p className="text-[12px] text-gray-500 leading-relaxed">
-            These Terms & Services govern your use of AmuseFlow, the online reservation system for Glorious Fantasyland. Please read them before booking a ride.
-          </p>
-          {TERMS_SECTIONS.map(s => (
-            <div key={s.title}>
-              <div className="text-[12.5px] font-bold text-gray-900 mb-1">{s.title}</div>
-              {s.body.map((p, i) => (
-                <p key={i} className="text-[12px] text-gray-600 leading-relaxed mb-1.5 last:mb-0">{p}</p>
-              ))}
+          {loading ? (
+            <div className="flex items-center justify-center py-10">
+              <Spinner />
             </div>
-          ))}
+          ) : loadError ? (
+            <div className="text-center py-6">
+              <p className="text-[12px] text-gray-500 mb-3">{loadError}</p>
+              <button onClick={load}
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-gray-800 hover:bg-gray-900 transition-colors">
+                Try again
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="text-[12px] text-gray-500 leading-relaxed">
+                These Terms & Services govern your use of AmuseFlow, the online reservation system for Glorious Fantasyland. Please read them before booking a ride.
+              </p>
+              {sections.map(s => (
+                <div key={s.title}>
+                  <div className="text-[12.5px] font-bold text-gray-900 mb-1">{s.title}</div>
+                  {s.body.map((p, i) => (
+                    <p key={i} className="text-[12px] text-gray-600 leading-relaxed mb-1.5 last:mb-0">{p}</p>
+                  ))}
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
         <div className="px-5 py-4 border-t border-gray-100 flex justify-end flex-shrink-0">

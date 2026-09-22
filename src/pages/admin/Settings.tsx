@@ -2,11 +2,47 @@ import { useEffect, useState } from 'react'
 import {
   ChevronDown, Save, Loader2, FerrisWheel, RotateCcw,
   ArrowDownToLine, ArrowUpToLine, Minus, Plus,
-  Layers, Baby, Backpack, Briefcase, Lock, Globe
+  Layers, Baby, Backpack, Briefcase, Lock, Globe,
+  FileText, Eye, EyeOff
 } from 'lucide-react'
 import type { RideValidationSettings, RiderCategoryPreset } from '../../types'
-import { settingsApi, riderCategoryApi, extractApiError } from '../../services/api'
+import { settingsApi, riderCategoryApi, termsApi, extractApiError } from '../../services/api'
 import toast from 'react-hot-toast'
+
+// ✅ NEW — same parsing convention as Login.tsx's TermsModal (duplicated
+// here rather than shared, matching this codebase's established per-file
+// helper pattern): a line starting with "## " begins a new numbered
+// section (its title); everything up to the next "## " is that section's
+// body, with a blank line splitting it into separate paragraphs. Used only
+// for this page's live Preview toggle — what's actually saved is the raw
+// text as-is.
+function parseTermsContent(raw: string): { title: string; body: string[] }[] {
+  const lines = raw.split(/\r?\n/)
+  const sections: { title: string; body: string[] }[] = []
+  let current: { title: string; lines: string[] } | null = null
+
+  const flush = () => {
+    if (!current) return
+    const paragraphs = current.lines
+      .join('\n')
+      .split(/\n\s*\n/)
+      .map(p => p.replace(/\s*\n\s*/g, ' ').trim())
+      .filter(Boolean)
+    sections.push({ title: current.title, body: paragraphs })
+  }
+
+  for (const line of lines) {
+    if (line.startsWith('## ')) {
+      flush()
+      current = { title: line.slice(3).trim(), lines: [] }
+    } else if (current) {
+      current.lines.push(line)
+    }
+  }
+  flush()
+
+  return sections
+}
 
 // Form state mirrors RideValidationSettings but keeps every field as a
 // string while editing, same pattern as Rides.tsx's restriction inputs —
@@ -329,6 +365,21 @@ export default function AdminSettingsPage() {
   const [savedCategoryForms, setSavedCategoryForms] = useState<Record<number, CategoryFormState>>({})
   const [categorySaving, setCategorySaving] = useState<Record<number, boolean>>({})
 
+  // ✅ NEW — Terms & Services (public Login page modal content, now
+  // editable here instead of hardcoded). Same independent-loading pattern
+  // as Rider Categories above — its own flag, own accordion, own
+  // saved-snapshot for the dirty-check, so a slow/failed fetch here never
+  // blocks the other two sections.
+  const [termsLoading, setTermsLoading] = useState(true)
+  const [termsOpen, setTermsOpen] = useState(false)
+  const [termsSaving, setTermsSaving] = useState(false)
+  const [termsContent, setTermsContent] = useState('')
+  const [savedTermsContent, setSavedTermsContent] = useState('')
+  const [termsUpdatedAt, setTermsUpdatedAt] = useState<string | null>(null)
+  const [termsPreview, setTermsPreview] = useState(false)
+
+  const hasTermsChanges = termsContent !== savedTermsContent
+
   const fetchSettings = async () => {
     setLoading(true)
 
@@ -387,9 +438,37 @@ export default function AdminSettingsPage() {
     }
   }
 
+  // ✅ NEW — loads the Terms & Services content independently of the two
+  // fetches above.
+  const fetchTerms = async () => {
+    setTermsLoading(true)
+
+    try {
+      const res = await termsApi.get()
+
+      const data: { content: string; updatedAt: string } =
+        res.data?.data ?? res.data
+
+      setTermsContent(data.content ?? '')
+      setSavedTermsContent(data.content ?? '')
+      setTermsUpdatedAt(data.updatedAt ?? null)
+
+    } catch (e: any) {
+      toast.error(
+        extractApiError(
+          e,
+          'Failed to load Terms & Services content.'
+        )
+      )
+    } finally {
+      setTermsLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchSettings()
     fetchCategories()
+    fetchTerms()
   }, [])
 
   // Age/Height/Weight pairs, per category.
@@ -542,6 +621,44 @@ export default function AdminSettingsPage() {
       )
     } finally {
       setCategorySaving(prev => ({ ...prev, [categoryId]: false }))
+    }
+  }
+
+  // ✅ NEW — Terms & Services save. The only real validation is
+  // "not empty" (mirroring the backend's [Required]/[MinLength(1)] on
+  // UpdateTermsContentRequest.Content) — the "## " section convention is a
+  // formatting nicety for the Preview toggle, not something the Admin is
+  // forced to follow, since a Terms document that's just one big paragraph
+  // is still perfectly valid content to save.
+  const handleSaveTerms = async () => {
+    if (!termsContent.trim()) {
+      toast.error('Terms & Services content cannot be empty.')
+      return
+    }
+
+    setTermsSaving(true)
+
+    try {
+      const res = await termsApi.update({ content: termsContent })
+
+      const data: { content: string; updatedAt: string } =
+        res.data?.data ?? res.data
+
+      setTermsContent(data.content ?? termsContent)
+      setSavedTermsContent(data.content ?? termsContent)
+      setTermsUpdatedAt(data.updatedAt ?? null)
+
+      toast.success('Terms & Services updated successfully.')
+
+    } catch (e: any) {
+      toast.error(
+        extractApiError(
+          e,
+          'Failed to update Terms & Services.'
+        )
+      )
+    } finally {
+      setTermsSaving(false)
     }
   }
 
@@ -1037,6 +1154,111 @@ export default function AdminSettingsPage() {
                     {form.minWeightFloorKg || '—'}–{form.maxWeightCeilingKg || '—'} kg
                   </div>
                 </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </AccordionSection>
+
+      )}
+
+      {/* ✅ NEW — Terms & Services: the content shown in the public Login
+          page's Terms & Services modal, now editable here instead of
+          hardcoded in the frontend. Loads independently of the two
+          sections above (own skeleton, own loading flag). */}
+      {termsLoading ? (
+
+        <SettingsAccordionSkeleton />
+
+      ) : (
+
+        <AccordionSection
+          title="Terms & Services"
+          subtitle="The legal terms shown to visitors on the Login page — editable without a code change"
+          icon={<FileText className="w-5 h-5" />}
+          open={termsOpen}
+          onToggle={() => setTermsOpen(p => !p)}
+        >
+
+          <div className="pt-1">
+
+            <p className="text-xs text-gray-400 mb-3">
+              Start a new numbered section with a line like <code className="px-1 py-0.5 rounded bg-gray-100 text-gray-600">## 1. Section Title</code>. Everything below it, up to the next <code className="px-1 py-0.5 rounded bg-gray-100 text-gray-600">##</code> line, becomes that section's body — leave a blank line between paragraphs.
+            </p>
+
+            <div className="flex items-center justify-end mb-2">
+              <button
+                type="button"
+                onClick={() => setTermsPreview(p => !p)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                {termsPreview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {termsPreview ? 'Hide preview' : 'Preview'}
+              </button>
+            </div>
+
+            {termsPreview ? (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 max-h-96 overflow-y-auto space-y-3">
+                {parseTermsContent(termsContent).length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">Nothing to preview yet.</p>
+                ) : (
+                  parseTermsContent(termsContent).map(s => (
+                    <div key={s.title}>
+                      <div className="text-[12.5px] font-bold text-gray-900 mb-1">{s.title}</div>
+                      {s.body.map((p, i) => (
+                        <p key={i} className="text-[12px] text-gray-600 leading-relaxed mb-1.5 last:mb-0">{p}</p>
+                      ))}
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <textarea
+                value={termsContent}
+                onChange={e => setTermsContent(e.target.value)}
+                disabled={termsSaving}
+                rows={16}
+                placeholder="## 1. Acceptance of Terms&#10;By creating an account..."
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-mono text-gray-700 leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:opacity-60 resize-y"
+              />
+            )}
+
+            <div className="flex items-center justify-between flex-wrap gap-3 pt-4 mt-1 border-t border-gray-100">
+
+              <div className="text-xs text-gray-400">
+                {termsUpdatedAt &&
+                  `Last updated ${new Date(termsUpdatedAt).toLocaleString('en-PH')}`}
+              </div>
+
+              <div className="flex items-center gap-2">
+
+                {hasTermsChanges && (
+                  <button
+                    type="button"
+                    onClick={() => setTermsContent(savedTermsContent)}
+                    disabled={termsSaving}
+                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-600 hover:bg-gray-50 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Undo changes
+                  </button>
+                )}
+
+                <button
+                  onClick={handleSaveTerms}
+                  disabled={termsSaving || !hasTermsChanges}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {termsSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  Save changes
+                </button>
 
               </div>
 

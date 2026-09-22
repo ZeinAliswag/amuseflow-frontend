@@ -9,14 +9,14 @@ React + TypeScript + Vite frontend for **AmuseFlow** — a theme park attraction
 
 ## Portals
 
-- **Visitor** — browse attractions and attraction bundles, book schedules, track bookings, leave reviews, receive real-time notifications
-- **Admin** — manage attractions, bundles, schedules, bookings, users, validation settings (including Kid/Teen/Adult rider category presets), generate ratings reports (PDF/Word export), and view system-wide activity logs and notifications
+- **Visitor** — browse attractions and attraction bundles, book schedules, track bookings on a dedicated My Bookings page, leave reviews, receive real-time notifications, and recover a forgotten password without an admin's help (verified via username + registered contact number, since there's no email on file)
+- **Admin** — manage attractions, bundles, schedules, bookings, users, validation settings (including Kid/Teen/Adult rider category presets), the Terms & Services shown on the Login page, generate ratings reports (PDF/Word export), and view system-wide activity logs and notifications
 - **Ride Attendant** — view assigned schedules, verify visitors, collect payment, and check guests in (bookings auto-complete once a schedule's window closes)
 
 ## Tech stack
 
 - **React 19** with hooks, no class components
-- **TypeScript** throughout — `types.ts` mirrors the backend's DTO shapes
+- **TypeScript** throughout — `types/index.ts` mirrors the backend's DTO shapes
 - **Vite** for dev server and build
 - **Tailwind CSS** for styling, no component library
 - **react-hot-toast** for notifications, **lucide-react** for icons
@@ -29,7 +29,7 @@ npm install
 npm run dev
 ```
 
-Point the API base URL (see `src/services/api.ts`) at a running instance of [AmuseFlowWebAPI](../AmuseFlowWebAPI).
+Set `VITE_API_BASE_URL` in a `.env.local` file to a running instance of [AmuseFlowWebAPI](../AmuseFlowWebAPI) (e.g. `https://localhost:7263`) — `src/services/api.ts` throws on startup if it's missing, rather than silently falling back to a hardcoded local URL.
 
 ```bash
 npm run build   # production build
@@ -41,14 +41,19 @@ npx tsc -b      # typecheck only
 ```
 src/
   pages/
+    Login.tsx    # Unauthenticated: sign in, register, forgot password, Terms & Services
     admin/       # Admin portal pages
-    visitor/     # Visitor portal (VisitorDashboard)
+    visitor/     # Visitor portal (VisitorDashboard, MyBookings)
     attendant/   # Ride Attendant portal (AttendantDashboard)
   components/
     layout/      # AdminLayout, PortalLayouts (shared header/nav/notification bell)
+    shared/      # Reusable UI primitives (spinners, empty states, etc.)
+  hooks/
+    useAuth.tsx  # Auth context — current user, login/logout, token persistence
   services/
     api.ts       # API client, one function group per backend controller
-  types.ts       # TypeScript types mirroring backend DTOs
+  types/
+    index.ts     # TypeScript types mirroring backend DTOs
 ```
 
 ## Documentation

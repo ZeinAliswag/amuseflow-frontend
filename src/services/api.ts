@@ -183,6 +183,19 @@ export const riderCategoryApi = {
     api.put(`/api/ridercategorypresets/${id}`, payload),
 }
 
+// ✅ NEW — Terms & Services content, backing the Settings page's "Terms &
+// Services" accordion (Admin, edit) and the public Login page's Terms &
+// Services modal (anyone, read). Get is intentionally NOT gated behind
+// auth on the backend — see TermsContentController — since the Login page
+// shows this before a visitor even has an account.
+export const termsApi = {
+  get: () =>
+    api.get('/api/termscontent'),
+
+  update: (payload: { content: string }) =>
+    api.put('/api/termscontent', payload),
+}
+
 // ── Reports (admin-only rating analytics) ────────────────────────
 // Backs the Admin "Reports" page — monthly average-rating trend, scoped to
 // every Attraction, every Attraction Bundle, everything combined, or one
