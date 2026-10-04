@@ -2,7 +2,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import { Spinner } from './components/shared'
+import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import Login from './pages/Login'
+import NotFoundPage from './pages/NotFound'
 import AdminLayout from './components/layout/AdminLayout'
 import { VisitorLayout, AttendantLayout } from './components/layout/PortalLayouts'
 import AdminDashboardPage from './pages/admin/Dashboard'
@@ -122,7 +124,10 @@ function AppRoutes() {
       } />
 
       <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      {/* ✅ CHANGED — was Navigate to="/login", which silently signed out a
+          logged-in user who mistyped a URL. Now shows a real 404 page with a
+          role-aware "go home" link (see pages/NotFound.tsx). */}
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }
@@ -130,6 +135,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
+      <ErrorBoundary>
       <AuthProvider>
         <AppRoutes />
         <Toaster
@@ -150,6 +156,7 @@ export default function App() {
           }}
         />
       </AuthProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }

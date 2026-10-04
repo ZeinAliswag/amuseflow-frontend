@@ -398,6 +398,27 @@ function DateRangeButton({ from, to, onClick }: { from: string; to: string; onCl
   )
 }
 
+// ── Filter persistence — same localStorage pattern as admin/Bookings.tsx
+// and admin/Logs.tsx. Date range and free-text search stay "in the moment"
+// (not persisted); only the read-status filter and page size are sticky. ──
+const FILTERS_KEY = 'af_admin_notifications_filters'
+
+interface StoredNotifFilters {
+  readFilter: string
+  pageSize: number
+}
+
+function loadStoredNotifFilters(): Partial<StoredNotifFilters> {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function saveStoredNotifFilters(f: StoredNotifFilters) {
+  try { localStorage.setItem(FILTERS_KEY, JSON.stringify(f)) } catch { /* ignore quota errors */ }
+}
+
 function groupByDate(list: Notification[]) {
   const groups: Record<string, Notification[]> = {}
   list.forEach(n => {
@@ -411,10 +432,15 @@ function groupByDate(list: Notification[]) {
 }
 
 export default function AdminNotificationsPage() {
+  const storedNotifFilters = loadStoredNotifFilters()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [pagination, setPagination] = useState({ currentPage: 1, totalPages: 1, totalCount: 0, pageSize: 20 })
-  const [params, setParams]         = useState<PaginationRequest>({ page: 1, pageSize: 20, search: '' })
-  const [readFilter, setReadFilter]     = useState('')
+  const [params, setParams]         = useState<PaginationRequest>({
+    page: 1,
+    pageSize: storedNotifFilters.pageSize ?? 20,
+    search: '',
+  })
+  const [readFilter, setReadFilter]     = useState(storedNotifFilters.readFilter ?? '')
   const [dateFrom, setDateFrom]     = useState('')
   const [dateTo, setDateTo]         = useState('')
   const [dateModalOpen, setDateModalOpen] = useState(false)
@@ -424,6 +450,12 @@ export default function AdminNotificationsPage() {
   const [markingAll, setMarkingAll] = useState(false)
 
   useEffect(() => { fetchNotifications(); fetchUnreadCount() }, [params, readFilter, dateFrom, dateTo])
+
+  // ✅ NEW — persist read-status filter + page size (mirrors admin/Bookings.tsx
+  // and admin/Logs.tsx). Date range and search stay "in the moment".
+  useEffect(() => {
+    saveStoredNotifFilters({ readFilter, pageSize: params.pageSize ?? 20 })
+  }, [readFilter, params.pageSize])
 
   // ✅ FIXED (again) — was window.scrollTo(), a no-op since AdminLayout's
   // real scroll container is #admin-scroll-area, not the window. Then

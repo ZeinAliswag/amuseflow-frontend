@@ -1,4 +1,5 @@
 import axios from 'axios'
+import toast from 'react-hot-toast'
 
 // ✅ FIXED — was hardcoded to 'https://localhost:7263', which only exists on
 // your own machine. Now reads from Vite's env system: set VITE_API_BASE_URL
@@ -26,14 +27,28 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// On 401 — clear token and redirect to login
+// On 401 — show a toast, clear token, and redirect to login.
+// ✅ NEW — used to redirect silently, which looked like the app just
+// randomly kicked the user back to the login screen with no explanation.
+// Now shows a toast first. Guarded so it only fires once even if several
+// requests 401 back-to-back (e.g. a page firing 3 API calls at once), and
+// skipped entirely if the user is already on /login (nothing to explain).
+let sessionExpiredNotified = false
 api.interceptors.response.use(
   (r) => r,
   (error) => {
     if (error.response?.status === 401) {
+      const alreadyOnLogin = window.location.pathname === '/login'
+      const hadToken = !!localStorage.getItem('token')
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      if (!alreadyOnLogin) {
+        if (hadToken && !sessionExpiredNotified) {
+          sessionExpiredNotified = true
+          toast.error('Your session has expired. Please log in again.')
+        }
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }
