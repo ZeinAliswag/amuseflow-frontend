@@ -1090,12 +1090,21 @@ export default function AdminReportsPage() {
     }
   }
 
-  const handleDownloadPdf = async () => {
+  // ✅ NEW — both downloads now go through a confirm step first ("Are you
+  // sure you want to download...?") instead of firing immediately on click,
+  // and show a success toast once the file has actually been handed to the
+  // browser, matching the confirm-then-toast pattern used for destructive/
+  // notable actions elsewhere in the admin portal (see Users.tsx, Bookings.tsx).
+  const [confirmDownload, setConfirmDownload] = useState<'pdf' | 'word' | null>(null)
+
+  const doDownloadPdf = async () => {
+    setConfirmDownload(null)
     setDownloadingPdf(true)
     try {
       const pdf = await buildReportPdf()
       if (!pdf) return
       pdf.save(`AmuseFlow Rating Report - ${periodLabel}.pdf`)
+      toast.success('Report PDF downloaded.')
     } catch (e) {
       toast.error('Failed to generate PDF.')
     } finally {
@@ -1149,7 +1158,8 @@ export default function AdminReportsPage() {
     window.print()
   }
 
-  const handleDownloadWord = async () => {
+  const doDownloadWord = async () => {
+    setConfirmDownload(null)
     setDownloadingWord(true)
     try {
       const blob = await buildReportDocx({
@@ -1176,6 +1186,7 @@ export default function AdminReportsPage() {
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
+      toast.success('Report Word document downloaded.')
     } catch (e) {
       toast.error('Failed to generate Word document.')
     } finally {
@@ -1192,11 +1203,11 @@ export default function AdminReportsPage() {
           <p className="text-sm text-gray-500 mt-1">Average visitor ratings by month, attraction, and attraction bundle.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={handleDownloadPdf} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
+          <button onClick={() => setConfirmDownload('pdf')} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
             className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
             {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} Download PDF
           </button>
-          <button onClick={handleDownloadWord} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
+          <button onClick={() => setConfirmDownload('word')} disabled={loadingTrend || loadingBreakdown || downloadingPdf || downloadingWord || printing}
             className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
             {downloadingWord ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Download Word
           </button>
@@ -1498,6 +1509,35 @@ export default function AdminReportsPage() {
           <div className="text-center mt-1">Generated: {generatedAtLabel} &nbsp;·&nbsp; By: {user?.fullName ?? 'Admin'}</div>
         </div>
       </div>
+
+      {/* ✅ NEW — confirm-before-download modal, shared by both "Download
+          PDF" and "Download Word" (the actual generation only runs once the
+          admin confirms; see doDownloadPdf / doDownloadWord). */}
+      {confirmDownload && (
+        <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-blue-100 text-blue-600">
+              {confirmDownload === 'pdf' ? <FileDown className="w-6 h-6" /> : <FileText className="w-6 h-6" />}
+            </div>
+            <div className="text-[15px] font-bold text-gray-900 mb-1">
+              Download {confirmDownload === 'pdf' ? 'PDF' : 'Word document'}?
+            </div>
+            <div className="text-[12px] text-gray-600 mb-5">
+              Are you sure you want to download this report as a {confirmDownload === 'pdf' ? 'PDF' : '.docx'} file — "AmuseFlow Rating Report - {periodLabel}.{confirmDownload === 'pdf' ? 'pdf' : 'docx'}"?
+            </div>
+            <div className="flex gap-2.5">
+              <button onClick={() => setConfirmDownload(null)} disabled={downloadingPdf || downloadingWord}
+                className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-[12px] font-medium hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button onClick={confirmDownload === 'pdf' ? doDownloadPdf : doDownloadWord} disabled={downloadingPdf || downloadingWord}
+                className="flex-1 py-2.5 rounded-xl text-[12px] font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-60 bg-blue-600 hover:bg-blue-700 text-white">
+                {(downloadingPdf || downloadingWord) ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Yes, download'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

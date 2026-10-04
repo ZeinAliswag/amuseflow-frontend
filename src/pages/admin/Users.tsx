@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   Plus, Pencil, UserCheck, UserX, Users, Filter,
-  Shield, Key, CheckCircle2, Lock, UserCog, Loader2, ChevronDown, Phone
+  Shield, Key, CheckCircle2, Lock, UserCog, Loader2, ChevronDown, Phone, Download
 } from 'lucide-react'
 import type { User, PagedResponse, PaginationRequest } from '../../types'
 import api from '../../services/api'
 import {
-  Card, Modal, SearchBar
+  Card, Modal, SearchBar, exportToCsv
 } from '../../components/shared'
 import toast from 'react-hot-toast'
 
@@ -224,6 +224,7 @@ export default function AdminUsersPage() {
   const [confirmPw, setConfirmPw]         = useState(false)
   const [toggleTarget, setToggleTarget]   = useState<User | null>(null)
   const [toggleLoading, setToggleLoading] = useState(false)
+  const [exporting, setExporting]         = useState(false)
 
   useEffect(() => { fetchUsers() }, [params, roleFilter, statusFilter])
 
@@ -448,6 +449,47 @@ export default function AdminUsersPage() {
     finally { setEditSaving(false) }
   }
 
+  // ✅ NEW — re-fetches with current filters at a large page size, then
+  // downloads a CSV. Same pattern as admin/Bookings.tsx / admin/Logs.tsx.
+  const doExportCsv = async () => {
+    setExporting(true)
+    try {
+      // ✅ FIXED — was a single request with pageSize: 5000, but the backend
+      // clamps PageSize to a hard max of 100 (PaginationRequest.cs), so any
+      // users past the first 100 matches were silently missing from the
+      // export. Now pages through every page at the backend's max page size
+      // and concatenates the results, so the CSV covers every user matching
+      // the current filters, not just the first page's worth.
+      let data: User[] = []
+      let page = 1
+      const pageSize = 100
+      while (true) {
+        const res = await api.get<PagedResponse<User>>('/api/user', {
+          params: { ...params, page, pageSize, role: roleFilter || undefined }
+        })
+        const batch = res.data.data ?? []
+        data.push(...batch)
+        const totalPages = res.data.pagination?.totalPages ?? 1
+        if (batch.length < pageSize || page >= totalPages) break
+        page++
+      }
+      if (statusFilter === 'active')   data = data.filter(u => u.isActive)
+      if (statusFilter === 'inactive') data = data.filter(u => !u.isActive)
+
+      exportToCsv('users', data, [
+        { header: 'ID', value: u => u.id },
+        { header: 'Full Name', value: u => u.fullName },
+        { header: 'Username', value: u => u.username },
+        { header: 'Role', value: u => u.role },
+        { header: 'Contact Number', value: u => u.contactNumber ?? '' },
+        { header: 'Status', value: u => u.isActive ? 'Active' : 'Deactivated' },
+        { header: 'Joined', value: u => new Date(u.createdAt).toLocaleDateString('en-PH') },
+      ])
+      toast.success(`Exported ${data.length} user${data.length === 1 ? '' : 's'}.`)
+    } catch { toast.error('Failed to export users.') }
+    finally { setExporting(false) }
+  }
+
   const roleColor = (role: string) => {
     if (role === 'Admin')          return 'bg-blue-100 text-blue-700'
     if (role === 'Ride Attendant') return 'bg-amber-100 text-amber-700'
@@ -487,6 +529,13 @@ export default function AdminUsersPage() {
           value={roleFilter}
           onChange={v => { setRoleFilter(v); setParams(p => ({ ...p, page: 1 })) }}
         />
+
+        {/* Export CSV */}
+        <button type="button" onClick={doExportCsv} disabled={exporting}
+          className="ml-auto flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+          <Download className="w-3.5 h-3.5 text-gray-400" />
+          {exporting ? 'Exporting…' : 'Export CSV'}
+        </button>
       </div>
 
       <Card>

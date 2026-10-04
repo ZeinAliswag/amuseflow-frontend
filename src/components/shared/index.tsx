@@ -345,3 +345,40 @@ export function SearchBar({ value, onChange, placeholder = 'Search...' }: {
     </div>
   )
 }
+
+// ── CSV export ────────────────────────────────────────────────
+// ✅ NEW — client-side CSV export shared by the Admin Bookings, Users, and
+// Logs tables. Takes the rows already loaded on screen (the current page's
+// filtered/sorted result) plus a column list describing how to turn each
+// row into a cell, builds a CSV string, and triggers a browser download —
+// no backend endpoint needed since the data is already in memory.
+export interface CsvColumn<T> {
+  header: string
+  value: (row: T) => string | number | null | undefined
+}
+
+// Escapes a single CSV field: wraps in quotes (and doubles any inner
+// quotes) whenever the value contains a comma, quote, or newline — the
+// minimum needed for Excel/Sheets to read it back correctly.
+function csvEscape(value: string | number | null | undefined): string {
+  const s = value === null || value === undefined ? '' : String(value)
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+export function exportToCsv<T>(filename: string, rows: T[], columns: CsvColumn<T>[]) {
+  const header = columns.map(c => csvEscape(c.header)).join(',')
+  const body = rows.map(row => columns.map(c => csvEscape(c.value(row))).join(',')).join('\n')
+  // Leading BOM so Excel opens UTF-8 (₱, non-ASCII names, etc.) correctly
+  // instead of mangling it into Latin-1 gibberish.
+  const csv = '﻿' + [header, body].filter(Boolean).join('\n')
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename.endsWith('.csv') ? filename : `${filename}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}

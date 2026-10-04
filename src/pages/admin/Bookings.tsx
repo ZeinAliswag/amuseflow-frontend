@@ -3,11 +3,38 @@ import {
   CheckCircle2, XCircle, Ticket,
   Calendar, Clock, ChevronLeft, ChevronRight,
   Search, Loader2, X, ChevronDown, CalendarDays, Phone,
-  FerrisWheel, AlarmClock, BadgePercent
+  FerrisWheel, AlarmClock, BadgePercent, Download, CheckSquare, Square
 } from 'lucide-react'
 import type { Booking, BookingPromoItem, PaginationRequest } from '../../types'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
+import { exportToCsv } from '../../components/shared'
+
+// ✅ NEW — persists the admin's filter picks (status/payment/date range/page
+// size — deliberately not search text or the current page number, which
+// are more "in the moment") across navigation and reloads, so coming back
+// to this page later doesn't dump the admin back to an unfiltered view.
+// Same key/shape convention reused on Logs.tsx and Notifications.tsx.
+const FILTERS_KEY = 'af_admin_bookings_filters'
+
+interface StoredFilters {
+  statusFilter: string
+  payFilter: string
+  dateFrom: string
+  dateTo: string
+  pageSize: number
+}
+
+function loadStoredFilters(): Partial<StoredFilters> {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function saveStoredFilters(f: StoredFilters) {
+  try { localStorage.setItem(FILTERS_KEY, JSON.stringify(f)) } catch { /* ignore quota errors */ }
+}
 
 const fmt = (n: any) => Number(n ?? 0).toFixed(2)
 
@@ -565,16 +592,30 @@ function ConfirmModal({ title, message, confirmLabel, danger, onConfirm, onCance
 }
 
 export default function AdminBookingsPage() {
+  // ✅ NEW — seed filter state from localStorage (if present) instead of
+  // always starting blank, so a previously-applied filter survives a
+  // reload/re-navigation. Read once, synchronously, at mount — avoids a
+  // flash of the unfiltered list before the stored values kick in.
+  const stored = loadStoredFilters()
+
   const [bookings, setBookings]     = useState<Booking[]>([])
   const [pagination, setPagination] = useState({ currentPage:1, totalPages:1, totalCount:0, pageSize:15 })
-  const [params, setParams]         = useState<PaginationRequest>({ page:1, pageSize:15, search:'' })
-  const [statusFilter, setStatusFilter] = useState('')
-  const [payFilter, setPayFilter]       = useState('')
-  const [dateFrom, setDateFrom]         = useState('')
-  const [dateTo, setDateTo]             = useState('')
+  const [params, setParams]         = useState<PaginationRequest>({ page:1, pageSize: stored.pageSize ?? 15, search:'' })
+  const [statusFilter, setStatusFilter] = useState(stored.statusFilter ?? '')
+  const [payFilter, setPayFilter]       = useState(stored.payFilter ?? '')
+  const [dateFrom, setDateFrom]         = useState(stored.dateFrom ?? '')
+  const [dateTo, setDateTo]             = useState(stored.dateTo ?? '')
   const [dateModalOpen, setDateModalOpen] = useState(false)
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
+  const [exporting, setExporting]       = useState(false)
+
+  // ✅ NEW — bulk approve/reject: which Pending booking IDs on the current
+  // page are checked, plus the confirm-modal target status ('Approved' or
+  // 'Rejected') once the admin clicks one of the bulk action buttons.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkStatus, setBulkStatus]   = useState<'Approved' | 'Rejected' | null>(null)
+  const [bulkLoading, setBulkLoading] = useState(false)
 
   // ✅ NEW — pressing the "Bundle · N attractions" pill on a bundle row
   // opens a modal listing that booking's locked-in included rides.
@@ -586,6 +627,21 @@ export default function AdminBookingsPage() {
   const [actionLoading, setActionLoading] = useState(false)
 
   useEffect(() => { fetchBookings() }, [params, statusFilter, payFilter, dateFrom, dateTo])
+
+  // Persist whenever a filter changes — deliberately excludes `search` and
+  // `params.page`, which reset naturally and shouldn't "stick" the way a
+  // status/date filter should.
+  useEffect(() => {
+    saveStoredFilters({
+      statusFilter, payFilter, dateFrom, dateTo,
+      pageSize: params.pageSize ?? 15,
+    })
+  }, [statusFilter, payFilter, dateFrom, dateTo, params.pageSize])
+
+  // Selection shouldn't survive a page change/filter change/refetch — a
+  // checked row that silently scrolled off-page and got bulk-actioned
+  // anyway would be a nasty surprise.
+  useEffect(() => { setSelectedIds(new Set()) }, [bookings])
 
   // ✅ FIXED (again) — was window.scrollTo(), a no-op since AdminLayout's
   // real scroll container is #admin-scroll-area, not the window. Then
@@ -675,6 +731,98 @@ export default function AdminBookingsPage() {
     finally { setActionLoading(false) }
   }
 
+  // ✅ NEW — bulk approve/reject every currently-selected (Pending) booking
+  // in one request. The backend processes each ID independently and
+  // reports a per-row failure reason instead of failing the whole batch,
+  // so the toast can say e.g. "4 approved, 1 skipped" instead of an
+  // all-or-nothing result.
+  const doBulkAction = async () => {
+    if (!bulkStatus || selectedIds.size === 0) return
+    setBulkLoading(true)
+    try {
+      const res = await api.put('/api/booking/bulk-status', {
+        bookingIds: Array.from(selectedIds),
+        status: bulkStatus,
+      })
+      const data = res.data?.data ?? res.data
+      const failures: { bookingId: number; reason: string }[] = data?.failures ?? []
+      if (failures.length === 0) {
+        toast.success(`${data?.successCount ?? selectedIds.size} booking(s) ${bulkStatus.toLowerCase()}.`)
+      } else {
+        toast.error(`${data?.successCount ?? 0} ${bulkStatus.toLowerCase()}, ${failures.length} skipped: ${failures[0].reason}`)
+      }
+      setBulkStatus(null)
+      setSelectedIds(new Set())
+      fetchBookings()
+    } catch (e: any) { toast.error(getErrorMessage(e, `Failed to ${bulkStatus.toLowerCase()} the selected bookings.`)) }
+    finally { setBulkLoading(false) }
+  }
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const pendingOnPage = bookings.filter(b => b.status === 'Pending')
+  const allPendingSelected = pendingOnPage.length > 0 && pendingOnPage.every(b => selectedIds.has(b.id))
+
+  const toggleSelectAllPending = () => {
+    setSelectedIds(allPendingSelected ? new Set() : new Set(pendingOnPage.map(b => b.id)))
+  }
+
+  // ✅ NEW — CSV export. Re-fetches with the current filters (not just the
+  // loaded page) at a large page size so the export reflects "everything
+  // matching these filters," not just the 15/25/50 rows currently on
+  // screen, then hands the rows to the shared exportToCsv helper.
+  const doExportCsv = async () => {
+    setExporting(true)
+    try {
+      // ✅ FIXED — was a single request with pageSize: 5000, but the backend
+      // clamps PageSize to a hard max of 100 (see PaginationRequest.cs), so
+      // anything past the first 100 matching rows was silently dropped from
+      // the export. Now pages through every page at the backend's max page
+      // size and concatenates the results, so the CSV covers every booking
+      // matching the current filters, not just the first page's worth.
+      const rows: Booking[] = []
+      let page = 1
+      const pageSize = 100
+      while (true) {
+        const res = await api.get('/api/booking', {
+          params: {
+            page, pageSize, search: params.search,
+            status: statusFilter || undefined,
+            paymentStatus: payFilter || undefined,
+            fromDate: dateFrom || undefined,
+            toDate: dateTo || undefined,
+          }
+        })
+        const batch: Booking[] = res.data?.data?.data ?? res.data?.data ?? res.data ?? []
+        rows.push(...batch)
+        const totalPages: number = res.data?.data?.pagination?.totalPages ?? res.data?.pagination?.totalPages ?? 1
+        if (batch.length < pageSize || page >= totalPages) break
+        page++
+      }
+      if (rows.length === 0) { toast.error('No bookings match the current filters.'); return }
+
+      exportToCsv(`amuseflow-bookings-${toISO(new Date())}`, rows, [
+        { header: 'Booking Code', value: r => r.bookingCode },
+        { header: 'Visitor', value: r => r.visitorName },
+        { header: 'Username', value: r => r.visitorUsername },
+        { header: 'Contact Number', value: r => r.visitorContactNumber },
+        { header: 'Attraction / Bundle', value: r => r.promoId ? r.promoName : r.rideName },
+        { header: 'Schedule Date', value: r => r.promoId ? r.includedRides?.[0]?.scheduleDate : r.scheduleDate },
+        { header: 'Price', value: r => fmt(r.promoId ? r.paymentAmount : r.ridePrice) },
+        { header: 'Status', value: r => r.status },
+        { header: 'Payment Status', value: r => r.paymentStatus },
+      ])
+      toast.success(`Exported ${rows.length} booking(s).`)
+    } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to export bookings.')) }
+    finally { setExporting(false) }
+  }
+
   // ✅ CHANGED — was one click-to-read per row. Now matches an app-icon
   // badge instead: opening the Bookings page bulk-marks EVERY unread
   // booking as read in one shot (fires once on mount). The rows on THIS
@@ -728,7 +876,41 @@ export default function AdminBookingsPage() {
             from={dateFrom} to={dateTo}
             onClick={() => setDateModalOpen(true)}
           />
+
+          {/* ✅ NEW — CSV export, re-fetches with current filters at a large
+              page size (not just the visible page) before downloading. */}
+          <button type="button" onClick={doExportCsv} disabled={exporting}
+            className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors">
+            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            Export CSV
+          </button>
         </div>
+
+        {/* ✅ NEW — bulk action toolbar, only shown once at least one Pending
+            row is checked. */}
+        {selectedIds.size > 0 && (
+          <div className="px-4 sm:px-5 py-3 border-b border-gray-100 bg-emerald-50 flex items-center gap-3 flex-wrap">
+            <span className="text-xs font-semibold text-emerald-800">
+              {selectedIds.size} booking{selectedIds.size === 1 ? '' : 's'} selected
+            </span>
+            <div className="flex items-center gap-2 ml-auto">
+              <button type="button" onClick={() => setBulkStatus('Approved')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-700 text-white transition-colors">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Approve selected
+              </button>
+              <button type="button" onClick={() => setBulkStatus('Rejected')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors">
+                <XCircle className="w-3.5 h-3.5" />
+                Reject selected
+              </button>
+              <button type="button" onClick={() => setSelectedIds(new Set())}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-100 transition-colors">
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="overflow-hidden rounded-b-2xl">
         {/* List */}
@@ -747,6 +929,17 @@ export default function AdminBookingsPage() {
           </div>
         ) : (
           <>
+            {/* ✅ NEW — "select all pending on this page" header row, only
+                shown once there's at least one Pending booking to select. */}
+            {pendingOnPage.length > 0 && (
+              <div className="flex items-center gap-2 px-4 sm:px-5 py-2 bg-gray-50 border-b border-gray-100">
+                <button type="button" onClick={toggleSelectAllPending}
+                  className="flex items-center gap-2 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors">
+                  {allPendingSelected ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
+                  Select all {pendingOnPage.length} pending on this page
+                </button>
+              </div>
+            )}
             <div className="divide-y divide-gray-300">
               {bookings.map(b => (
                 <div key={b.id}
@@ -755,6 +948,17 @@ export default function AdminBookingsPage() {
                   }`}>
                   {!b.isRead && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-red-500" />}
                   <div className="flex items-center gap-3 lg:contents">
+                    {/* ✅ NEW — bulk-select checkbox, only actionable for
+                        Pending bookings (everything else has no bulk action
+                        to apply), but keeps its slot for row alignment. */}
+                    <div className="flex-shrink-0 w-5">
+                      {b.status === 'Pending' && (
+                        <button type="button" onClick={() => toggleSelect(b.id)} aria-label="Select booking"
+                          className="text-gray-400 hover:text-emerald-600 transition-colors">
+                          {selectedIds.has(b.id) ? <CheckSquare className="w-4 h-4 text-emerald-600" /> : <Square className="w-4 h-4" />}
+                        </button>
+                      )}
+                    </div>
                     {/* Avatar */}
                     <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
                       {b.visitorName?.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
@@ -922,6 +1126,19 @@ export default function AdminBookingsPage() {
           onConfirm={doReject}
           onCancel={() => setRejectTarget(null)}
           loading={actionLoading}
+        />
+      )}
+
+      {/* Confirm Bulk Approve/Reject */}
+      {bulkStatus && (
+        <ConfirmModal
+          title={`${bulkStatus} ${selectedIds.size} booking${selectedIds.size === 1 ? '' : 's'}?`}
+          message={`This will ${bulkStatus.toLowerCase()} ${selectedIds.size} selected pending booking${selectedIds.size === 1 ? '' : 's'}. Visitors will be notified.`}
+          confirmLabel={`Yes, ${bulkStatus.toLowerCase()}`}
+          danger={bulkStatus === 'Rejected'}
+          onConfirm={doBulkAction}
+          onCancel={() => setBulkStatus(null)}
+          loading={bulkLoading}
         />
       )}
 

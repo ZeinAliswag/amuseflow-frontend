@@ -3,11 +3,32 @@ import {
   ClipboardList, Filter, X, Clock, User, Users, Tag, FileText,
  Calendar, Ticket, Search, ChevronLeft, ChevronRight, CalendarDays, ChevronDown,
   FerrisWheel, Shield, HardHat, UserRound, ArrowDownWideNarrow, ArrowUpWideNarrow,
-  Wrench
+  Wrench, Download
 } from 'lucide-react'
 import type { ActivityLog, PaginationRequest } from '../../types'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
+import { exportToCsv } from '../../components/shared'
+
+// ── Filter persistence — same localStorage pattern as admin/Bookings.tsx ──
+const FILTERS_KEY = 'af_admin_logs_filters'
+
+interface StoredLogFilters {
+  moduleFilter: string
+  sortDirection: 'ASC' | 'DESC'
+  pageSize: number
+}
+
+function loadStoredLogFilters(): Partial<StoredLogFilters> {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function saveStoredLogFilters(f: StoredLogFilters) {
+  try { localStorage.setItem(FILTERS_KEY, JSON.stringify(f)) } catch { /* ignore quota errors */ }
+}
 
 // ✅ NEW — masks the last segment of any booking code found inside an
 // activity log's Details text, e.g. "AF-20260723-3CF674" -> "AF-20260723-••••••"
@@ -560,10 +581,16 @@ function LogRowSkeleton() {
 }
 
 export default function AdminLogsPage() {
+  const storedLogFilters = loadStoredLogFilters()
   const [logs, setLogs]             = useState<ActivityLog[]>([])
   const [pagination, setPagination] = useState({ currentPage: 1, totalPages: 1, totalCount: 0, pageSize: 20 })
-  const [params, setParams]         = useState<PaginationRequest>({ page: 1, pageSize: 20, search: '' })
-  const [moduleFilter, setModuleFilter] = useState('')
+  const [params, setParams]         = useState<PaginationRequest>({
+    page: 1,
+    pageSize: storedLogFilters.pageSize ?? 20,
+    search: '',
+    sortDirection: storedLogFilters.sortDirection ?? undefined,
+  })
+  const [moduleFilter, setModuleFilter] = useState(storedLogFilters.moduleFilter ?? '')
   // ✅ UPDATED — locked to "Admin", no UI control to change it. This page is
   // Admin activity only — every admin's actions, never filtered down to
   // just the logged-in one — with no way to switch to Ride Attendant or
@@ -575,8 +602,20 @@ export default function AdminLogsPage() {
   const [loading, setLoading]       = useState(true)
   const [viewLog, setViewLog]       = useState<ActivityLog | null>(null)
   const [search, setSearch]         = useState('')
+  const [exporting, setExporting]   = useState(false)
 
   useEffect(() => { fetchLogs() }, [params, moduleFilter, dateFrom, dateTo])
+
+  // ✅ NEW — persist module/sort/page-size filters (mirrors admin/Bookings.tsx).
+  // date range and free-text search are deliberately excluded — "in the
+  // moment" filters, not sticky ones.
+  useEffect(() => {
+    saveStoredLogFilters({
+      moduleFilter,
+      sortDirection: params.sortDirection === 'ASC' ? 'ASC' : 'DESC',
+      pageSize: params.pageSize ?? 20,
+    })
+  }, [moduleFilter, params.sortDirection, params.pageSize])
 
   // ✅ FIXED (again) — was window.scrollTo(), a no-op since AdminLayout's
   // real scroll container is #admin-scroll-area, not the window. Then
@@ -636,7 +675,57 @@ export default function AdminLogsPage() {
 
   const grouped = groupByDate(logs)
 
+  // ✅ NEW — re-fetches with the current filters at a large page size (so the
+  // export isn't limited to the current page), then downloads a CSV. Same
+  // pattern as admin/Bookings.tsx's doExportCsv.
+  const doExportCsv = async () => {
+    setExporting(true)
+    try {
+      // ✅ FIXED — was a single request with pageSize: 5000, but the backend
+      // clamps PageSize to a hard max of 100 (PaginationRequest.cs), so any
+      // log entries past the first 100 matches were silently missing from
+      // the export. Now pages through every page at the backend's max page
+      // size and concatenates the results, so the CSV covers every entry
+      // matching the current filters (module, role, date range, search),
+      // not just the first page's worth.
+      let list: ActivityLog[] = []
+      let page = 1
+      const pageSize = 100
+      while (true) {
+        const res = await api.get('/api/activitylog', {
+          params: {
+            ...params,
+            page,
+            pageSize,
+            module: moduleFilter || undefined,
+            role: roleFilter || undefined,
+            fromDate: dateFrom || undefined,
+            toDate: dateTo || undefined,
+          }
+        })
+        const d = res.data?.data ?? res.data
+        const batch: ActivityLog[] = Array.isArray(d) ? d : (d?.data ?? [])
+        list.push(...batch)
+        const totalPages: number = res.data?.pagination?.totalPages ?? d?.pagination?.totalPages ?? 1
+        if (batch.length < pageSize || page >= totalPages) break
+        page++
+      }
+      if (dateFrom) list = list.filter(l => new Date(l.createdAt) >= new Date(dateFrom))
+      if (dateTo)   list = list.filter(l => new Date(l.createdAt) <= new Date(`${dateTo}T23:59:59`))
 
+      exportToCsv('activity-logs', list, [
+        { header: 'Log ID', value: l => l.id },
+        { header: 'Module', value: l => moduleLabel(l.module) },
+        { header: 'Action', value: l => l.action },
+        { header: 'Role', value: l => l.role ?? '' },
+        { header: 'Performed By', value: l => l.userName ?? 'System' },
+        { header: 'Details', value: l => l.details ? maskBookingCodesInText(l.details) : '' },
+        { header: 'Timestamp', value: l => new Date(l.createdAt).toLocaleString('en-PH') },
+      ])
+      toast.success(`Exported ${list.length} log entr${list.length === 1 ? 'y' : 'ies'}.`)
+    } catch { toast.error('Failed to export activity logs.') }
+    finally { setExporting(false) }
+  }
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -684,6 +773,13 @@ export default function AdminLogsPage() {
           from={dateFrom} to={dateTo}
           onClick={() => setDateModalOpen(true)}
         />
+
+        {/* Export CSV */}
+        <button type="button" onClick={doExportCsv} disabled={exporting}
+          className="ml-auto flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+          <Download className="w-3.5 h-3.5 text-gray-400" />
+          {exporting ? 'Exporting…' : 'Export CSV'}
+        </button>
       </div>
 
       {/* Feed */}
