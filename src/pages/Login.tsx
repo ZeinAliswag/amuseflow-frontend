@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Lock, Eye, EyeOff, Sparkles, Shield, Ticket, CreditCard, Phone, PartyPopper, UserPlus, CheckCircle2, Circle, X, FileText, KeyRound, ArrowLeft, ShieldCheck } from 'lucide-react'
-import api from '../services/api'
+import { User, Lock, Eye, EyeOff, Sparkles, Shield, Ticket, CreditCard, Phone, PartyPopper, UserPlus, CheckCircle2, Circle, X, FileText, KeyRound, ArrowLeft, ShieldCheck, Clock, ChevronDown, Moon, Sunrise } from 'lucide-react'
+import api, { operatingHoursApi } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { Spinner } from '../components/shared'
 import toast from 'react-hot-toast'
@@ -452,6 +452,154 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ✅ NEW — interactive park-hours badge, themed to the Login page's own rose
+// brand colour (same as the Sign in button / terms link) so it reads as part
+// of the page rather than a stray green chip. Open = brand rose, closing
+// within the hour = solid rose (urgent), closed = neutral gray. Tells the
+// visitor whether the park is open right now, how long until it opens or
+// closes, and on tap expands into a card with the hours, a progress bar with
+// a "now" marker, and a shortcut to the sign-in form. Ticks every 30s;
+// closes on outside click or Escape.
+function ParkHoursBadge({ opening, closing }: { opening: string; closing: string }) {
+  const [now, setNow] = useState(() => new Date())
+  const [expanded, setExpanded] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30000)
+    return () => clearInterval(t)
+  }, [])
+
+  useEffect(() => {
+    if (!expanded) return
+    const onDown = (e: MouseEvent) => { if (!rootRef.current?.contains(e.target as Node)) setExpanded(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [expanded])
+
+  const toMin = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m }
+  const fmt12 = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map(Number)
+    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+  }
+  const dur = (mins: number) => {
+    const h = Math.floor(mins / 60), m = mins % 60
+    return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`
+  }
+
+  const open = toMin(opening), close = toMin(closing)
+  const cur = now.getHours() * 60 + now.getMinutes()
+  const isOpen = cur >= open && cur < close
+  const closingSoon = isOpen && close - cur <= 60
+  const beforeOpen = cur < open
+  // minutes until the next opening (wraps past midnight once today's closed)
+  const untilOpen = beforeOpen ? open - cur : 1440 - cur + open
+  // 24-hour timeline geometry (percent of the day)
+  const dayPct = (m: number) => (m / 1440) * 100
+
+  // Brand-rose theme per state
+  const pill = !isOpen
+    ? 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+    : closingSoon
+      ? 'bg-rose-500 border-rose-500 text-white hover:bg-rose-600 shadow-sm shadow-rose-200'
+      : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
+  const dot = !isOpen ? 'bg-gray-400' : closingSoon ? 'bg-white' : 'bg-rose-500'
+  const bar = !isOpen ? 'bg-gray-300' : 'bg-gradient-to-r from-rose-400 to-rose-600'
+
+  const headline = isOpen
+    ? closingSoon ? `Closing soon · ${dur(close - cur)} left` : 'Open now'
+    : beforeOpen ? `Opens in ${dur(untilOpen)}` : `Closed · opens in ${dur(untilOpen)}`
+
+  const bigNumber = isOpen ? dur(close - cur) : dur(untilOpen)
+  const bigLabel = isOpen ? 'until closing' : 'until the park opens'
+
+  const goSignIn = () => {
+    setExpanded(false)
+    const input = document.querySelector<HTMLInputElement>('input[type="text"]')
+    input?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setTimeout(() => input?.focus(), 350)
+  }
+
+  return (
+    <div ref={rootRef} className="mt-2.5 flex flex-col items-center">
+      <button type="button" onClick={() => setExpanded(e => !e)} aria-expanded={expanded}
+        title="Tap for park hours"
+        className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-[11px] font-semibold transition-all hover:-translate-y-0.5 active:scale-95 ${pill}`}>
+        {isOpen ? (
+          <span className="relative flex w-2 h-2">
+            <span className={`absolute inline-flex w-full h-full rounded-full opacity-60 animate-ping ${dot}`} />
+            <span className={`relative inline-flex w-2 h-2 rounded-full ${dot}`} />
+          </span>
+        ) : beforeOpen ? <Sunrise className="w-3.5 h-3.5 text-gray-500" /> : <Moon className="w-3.5 h-3.5 text-gray-500" />}
+        <span>{headline}</span>
+        {!closingSoon && <span className="opacity-60 font-medium hidden sm:inline">· {fmt12(opening)} – {fmt12(closing)}</span>}
+        <ChevronDown className={`w-3.5 h-3.5 opacity-70 transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+
+      <div className={`grid transition-all duration-300 ease-out ${expanded ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0'}`}>
+        <div className="overflow-hidden">
+          <div className="w-72 rounded-2xl border border-rose-100 bg-white shadow-lg shadow-rose-100/60 px-4 py-3.5 text-left">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900">
+                {isOpen ? <Clock className="w-3.5 h-3.5 text-rose-500" /> : beforeOpen ? <Sunrise className="w-3.5 h-3.5 text-gray-500" /> : <Moon className="w-3.5 h-3.5 text-gray-500" />}
+                Park hours
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                isOpen ? 'bg-rose-50 text-rose-600' : 'bg-gray-100 text-gray-500'
+              }`}>{isOpen ? 'Open' : 'Closed'}</span>
+            </div>
+
+            <div className="flex items-end gap-2 mb-3">
+              <span className="text-2xl font-extrabold text-gray-900 leading-none">{bigNumber}</span>
+              <span className="text-[11px] text-gray-400 mb-0.5">{bigLabel}</span>
+            </div>
+
+            {/* 24-hour timeline: the highlighted segment is when the park is
+                open; the marker is "now" (pulses while open). Works the same
+                open or closed, so it's never an empty bar. */}
+            <div className="relative h-2.5 rounded-full bg-gray-100">
+              <div className={`absolute inset-y-0 rounded-full ${isOpen ? 'bg-rose-200' : 'bg-gray-200'}`}
+                style={{ left: `${dayPct(open)}%`, width: `${dayPct(close - open)}%` }} />
+              {isOpen && (
+                <div className={`absolute inset-y-0 rounded-full transition-all duration-700 ${bar}`}
+                  style={{ left: `${dayPct(open)}%`, width: `${dayPct(cur - open)}%` }} />
+              )}
+              <span className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow ${isOpen ? 'border-rose-500' : 'border-gray-400'}`}
+                style={{ left: `${dayPct(cur)}%` }} title="Now">
+                {isOpen && <span className="absolute inset-0 rounded-full bg-rose-400 opacity-50 animate-ping" />}
+              </span>
+            </div>
+            <div className="relative h-3 mt-1 text-[9px] text-gray-300 select-none">
+              {[['12 AM', 0], ['6 AM', 25], ['12 PM', 50], ['6 PM', 75], ['12 AM', 100]].map(([l, x], i) => (
+                <span key={i} className="absolute -translate-x-1/2" style={{ left: `${x}%`, ...(i === 0 ? { transform: 'none' } : i === 4 ? { transform: 'translateX(-100%)' } : {}) }}>{l}</span>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mt-1.5 text-[10px] font-semibold">
+              <span className="inline-flex items-center gap-1 text-gray-600"><Sunrise className="w-3 h-3 text-rose-400" />{fmt12(opening)}</span>
+              <span className="inline-flex items-center gap-1 text-gray-600">{fmt12(closing)}<Moon className="w-3 h-3 text-rose-400" /></span>
+            </div>
+
+            <div className="text-[11px] text-gray-500 mt-2.5 leading-relaxed">
+              {isOpen
+                ? 'Rides can be booked for time slots inside these hours.'
+                : beforeOpen
+                  ? `The park opens today at ${fmt12(opening)} — you can already reserve a slot.`
+                  : `The park is closed for today. It reopens tomorrow at ${fmt12(opening)} — reserve your slot ahead of time.`}
+            </div>
+
+            <button type="button" onClick={goSignIn}
+              className="w-full mt-3 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 active:scale-[0.98] text-white text-xs font-semibold transition-all">
+              <Ticket className="w-3.5 h-3.5" /> {isOpen ? 'Sign in to book a ride' : 'Sign in to reserve a slot'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Login() {
   const [mode, setMode]       = useState<'login'|'register'>('login')
   const [showPw, setShowPw]   = useState(false)
@@ -475,6 +623,20 @@ export default function Login() {
 
   const auth     = useAuth()
   const navigate = useNavigate()
+
+  // ✅ NEW — the park's operating hours (admin-editable in Settings), shown
+  // under the logo so visitors know when the park is open before booking.
+  // Public endpoint — no login needed. Silent on failure; the line simply
+  // doesn't render.
+  const [parkHours, setParkHours] = useState<{ opening: string; closing: string } | null>(null)
+  useEffect(() => {
+    operatingHoursApi.get()
+      .then(res => {
+        const d = res.data?.data ?? res.data
+        if (d?.openingTime && d?.closingTime) setParkHours({ opening: d.openingTime, closing: d.closingTime })
+      })
+      .catch(() => {})
+  }, [])
 
   const doLogin = async () => {
     // ✅ CHANGED — was an inline red banner (setError); now toast, matching
@@ -531,6 +693,7 @@ export default function Login() {
           </div>
           <div className="text-xl font-bold text-gray-900">Glorious Fantasyland</div>
           <div className="text-xs text-gray-400 mt-0.5">AmuseFlow - Online Reservation System</div>
+          {parkHours && <ParkHoursBadge opening={parkHours.opening} closing={parkHours.closing} />}
         </div>
 
         {/* ✅ CHANGED — dropped the constant animate-ping ring (read as

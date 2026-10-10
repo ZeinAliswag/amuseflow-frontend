@@ -7,8 +7,13 @@ import {
 import type { User, PagedResponse, PaginationRequest } from '../../types'
 import api from '../../services/api'
 import {
-  Card, Modal, SearchBar, exportToCsv
+  Card, Modal, SearchBar
 } from '../../components/shared'
+import { exportReportCsv, exportReportExcel } from '../../components/shared/exportReport'
+import type { ReportColumn } from '../../components/shared/exportReport'
+import { ExportModal } from '../../components/shared/ExportModal'
+import type { ExportFormat } from '../../components/shared/ExportModal'
+import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 
 const ROLES = ['Visitor', 'Admin', 'Ride Attendant']
@@ -225,6 +230,8 @@ export default function AdminUsersPage() {
   const [toggleTarget, setToggleTarget]   = useState<User | null>(null)
   const [toggleLoading, setToggleLoading] = useState(false)
   const [exporting, setExporting]         = useState(false)
+  const [exportOpen, setExportOpen]       = useState(false)
+  const { user: me } = useAuth()
 
   useEffect(() => { fetchUsers() }, [params, roleFilter, statusFilter])
 
@@ -451,7 +458,13 @@ export default function AdminUsersPage() {
 
   // ✅ NEW — re-fetches with current filters at a large page size, then
   // downloads a CSV. Same pattern as admin/Bookings.tsx / admin/Logs.tsx.
-  const doExportCsv = async () => {
+  const exportFiltersSummary = [
+    roleFilter && `Role: ${roleFilter}`,
+    statusFilter !== 'all' && `Status: ${statusFilter === 'active' ? 'Active' : 'Deactivated'}`,
+    params.search && `Search: "${params.search}"`,
+  ].filter(Boolean).join('  ·  ') || 'None (all users)'
+
+  const doExport = async (format: ExportFormat) => {
     setExporting(true)
     try {
       // ✅ FIXED — was a single request with pageSize: 5000, but the backend
@@ -476,16 +489,24 @@ export default function AdminUsersPage() {
       if (statusFilter === 'active')   data = data.filter(u => u.isActive)
       if (statusFilter === 'inactive') data = data.filter(u => !u.isActive)
 
-      exportToCsv('users', data, [
-        { header: 'ID', value: u => u.id },
-        { header: 'Full Name', value: u => u.fullName },
-        { header: 'Username', value: u => u.username },
-        { header: 'Role', value: u => u.role },
-        { header: 'Contact Number', value: u => u.contactNumber ?? '' },
-        { header: 'Status', value: u => u.isActive ? 'Active' : 'Deactivated' },
-        { header: 'Joined', value: u => new Date(u.createdAt).toLocaleDateString('en-PH') },
-      ])
-      toast.success(`Exported ${data.length} user${data.length === 1 ? '' : 's'}.`)
+      if (data.length === 0) { setExportOpen(false); toast.error('No users match the current filters.'); return }
+
+      const rowNo = new Map(data.map((u, i) => [u, i + 1]))
+      const columns: ReportColumn<User>[] = [
+        { header: 'No.', width: 8, align: 'center', value: u => rowNo.get(u) },
+        { header: 'Full Name', width: 28, value: u => u.fullName },
+        { header: 'Username', width: 22, value: u => u.username },
+        { header: 'Role', width: 18, align: 'center', value: u => u.role },
+        { header: 'Contact Number', width: 16, value: u => u.contactNumber ?? '' },
+        { header: 'Status', width: 14, align: 'center', value: u => u.isActive ? 'Active' : 'Deactivated' },
+        { header: 'Joined', width: 16, align: 'center', value: u => new Date(u.createdAt).toLocaleDateString('en-PH') },
+      ]
+      const meta = { title: 'Users Report', filters: exportFiltersSummary, preparedBy: me?.fullName ?? 'Admin' }
+      const base = `amuseflow-users-${new Date().toISOString().slice(0, 10)}`
+      if (format === 'xlsx') await exportReportExcel(base, data, columns, meta)
+      else exportReportCsv(base, data, columns, meta)
+      setExportOpen(false)
+      toast.success(`Exported ${data.length} user${data.length === 1 ? '' : 's'} — downloaded successfully.`)
     } catch { toast.error('Failed to export users.') }
     finally { setExporting(false) }
   }
@@ -531,10 +552,10 @@ export default function AdminUsersPage() {
         />
 
         {/* Export CSV */}
-        <button type="button" onClick={doExportCsv} disabled={exporting}
+        <button type="button" onClick={() => setExportOpen(true)} disabled={exporting}
           className="ml-auto flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
           <Download className="w-3.5 h-3.5 text-gray-400" />
-          {exporting ? 'Exporting…' : 'Export CSV'}
+          Export
         </button>
       </div>
 
@@ -885,6 +906,16 @@ export default function AdminUsersPage() {
           </div>
         )}
       </Modal>
+
+      <ExportModal
+        open={exportOpen}
+        entityLabel="users"
+        filtersSummary={exportFiltersSummary}
+        fileBase={`amuseflow-users-${new Date().toISOString().slice(0, 10)}`}
+        loading={exporting}
+        onConfirm={doExport}
+        onCancel={() => setExportOpen(false)}
+      />
 
       {/* ── Confirm: Create staff ── */}
       {confirmCreate && (

@@ -3,10 +3,17 @@ import {
   ChevronDown, Save, Loader2, FerrisWheel, RotateCcw,
   ArrowDownToLine, ArrowUpToLine, Minus, Plus,
   Layers, Baby, Backpack, Briefcase, Lock, Globe,
-  FileText, Eye, EyeOff
+  FileText, Eye, EyeOff, Clock
 } from 'lucide-react'
 import type { RideValidationSettings, RiderCategoryPreset } from '../../types'
-import { settingsApi, riderCategoryApi, termsApi, extractApiError } from '../../services/api'
+import { settingsApi, riderCategoryApi, termsApi, operatingHoursApi, extractApiError } from '../../services/api'
+
+// "14:30" -> "2:30 PM" (display only; values are stored/sent as 24h HH:mm)
+function fmt12(hhmm: string) {
+  if (!/^\d{1,2}:\d{2}/.test(hhmm)) return '—'
+  const [h, m] = hhmm.split(':').map(Number)
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+}
 import toast from 'react-hot-toast'
 
 // ✅ NEW — same parsing convention as Login.tsx's TermsModal (duplicated
@@ -465,10 +472,101 @@ export default function AdminSettingsPage() {
     }
   }
 
+  // ✅ NEW — Operating Hours (park opening/closing time). Same independent
+  // load/save pattern as Terms & Services above. Schedules can only be
+  // created inside this window (enforced by the API and by the Schedules
+  // page's time pickers), and the Login page shows it to visitors.
+  const [hoursLoading, setHoursLoading] = useState(true)
+  const [hoursOpen, setHoursOpen] = useState(false)
+  const [hoursSaving, setHoursSaving] = useState(false)
+  const [openingTime, setOpeningTime] = useState('')
+  const [closingTime, setClosingTime] = useState('')
+  const [savedHours, setSavedHours] = useState({ openingTime: '', closingTime: '' })
+  const [hoursUpdatedAt, setHoursUpdatedAt] = useState<string | null>(null)
+  const hasHoursChanges = openingTime !== savedHours.openingTime || closingTime !== savedHours.closingTime
+
+  const fetchHours = async () => {
+    setHoursLoading(true)
+    try {
+      const res = await operatingHoursApi.get()
+      const data: { openingTime: string; closingTime: string; updatedAt: string } = res.data?.data ?? res.data
+      setOpeningTime(data.openingTime ?? '')
+      setClosingTime(data.closingTime ?? '')
+      setSavedHours({ openingTime: data.openingTime ?? '', closingTime: data.closingTime ?? '' })
+      setHoursUpdatedAt(data.updatedAt ?? null)
+    } catch (e: any) {
+      toast.error(extractApiError(e, 'Failed to load operating hours.'))
+    } finally {
+      setHoursLoading(false)
+    }
+  }
+
+  // ✅ NEW — impact preview: when the new hours push upcoming schedules out of
+  // the window, the Admin chooses Cancel (notify attendants + visitors) or Keep.
+  type HoursImpact = {
+    affectedSchedules: number; affectedBookings: number; affectedAttendants: number; hasMore: boolean
+    items: { scheduleId: number; rideName: string; date: string; callTime: string; endTime: string; attendantName?: string; activeBookings: number }[]
+  }
+  const [hoursImpact, setHoursImpact] = useState<HoursImpact | null>(null)
+  const [impactAction, setImpactAction] = useState<'Cancel' | 'Keep'>('Cancel')
+
+  const handleSaveHours = async () => {
+    if (!openingTime || !closingTime) {
+      toast.error('Please set both an opening and a closing time.')
+      return
+    }
+    if (openingTime >= closingTime) {
+      toast.error('Opening time must be earlier than closing time.')
+      return
+    }
+    setHoursSaving(true)
+    try {
+      const pv = await operatingHoursApi.preview({ openingTime, closingTime })
+      const impact: HoursImpact = pv.data?.data ?? pv.data
+      if (impact.affectedSchedules > 0) {
+        setImpactAction('Cancel')
+        setHoursImpact(impact)
+        setHoursSaving(false)
+        return // wait for the Admin's decision in the modal
+      }
+    } catch (e: any) {
+      toast.error(extractApiError(e, 'Failed to check the impact of the new hours.'))
+      setHoursSaving(false)
+      return
+    }
+    setHoursSaving(false)
+    await commitHours()
+  }
+
+  const commitHours = async (affectedAction?: 'Cancel' | 'Keep') => {
+    setHoursSaving(true)
+    try {
+      const res = await operatingHoursApi.update({ openingTime, closingTime, affectedAction })
+      const data: {
+        openingTime: string; closingTime: string; updatedAt: string
+        cancelledSchedules?: number; cancelledBookings?: number; keptSchedules?: number
+      } = res.data?.data ?? res.data
+      setHoursImpact(null)
+      setOpeningTime(data.openingTime)
+      setClosingTime(data.closingTime)
+      setSavedHours({ openingTime: data.openingTime, closingTime: data.closingTime })
+      setHoursUpdatedAt(data.updatedAt ?? null)
+      const extra = data.cancelledSchedules
+        ? ` ${data.cancelledSchedules} schedule(s) and ${data.cancelledBookings ?? 0} booking(s) cancelled; people notified.`
+        : data.keptSchedules ? ` ${data.keptSchedules} existing schedule(s) kept.` : ''
+      toast.success(`Operating hours updated: ${fmt12(data.openingTime)} – ${fmt12(data.closingTime)}.${extra}`)
+    } catch (e: any) {
+      toast.error(extractApiError(e, 'Failed to update operating hours.'))
+    } finally {
+      setHoursSaving(false)
+    }
+  }
+
   useEffect(() => {
     fetchSettings()
     fetchCategories()
     fetchTerms()
+    fetchHours()
   }, [])
 
   // Age/Height/Weight pairs, per category.
@@ -1268,6 +1366,160 @@ export default function AdminSettingsPage() {
 
         </AccordionSection>
 
+      )}
+
+      {/* ✅ NEW — Operating Hours: the park's daily opening/closing time.
+          Schedules must fall inside it (API-enforced, and the Schedules page
+          only offers times within it); also shown on the Login page. */}
+      {hoursLoading ? (
+
+        <SettingsAccordionSkeleton />
+
+      ) : (
+
+        <AccordionSection
+          title="Operating Hours"
+          subtitle="The park's opening and closing time — schedules can only be set inside this window"
+          icon={<Clock className="w-5 h-5" />}
+          open={hoursOpen}
+          onToggle={() => setHoursOpen(p => !p)}
+        >
+
+          <div className="pt-3">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Opening time</label>
+                <input
+                  type="time"
+                  value={openingTime}
+                  onChange={e => setOpeningTime(e.target.value)}
+                  disabled={hoursSaving}
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:opacity-60"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Closing time</label>
+                <input
+                  type="time"
+                  value={closingTime}
+                  onChange={e => setClosingTime(e.target.value)}
+                  disabled={hoursSaving}
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 disabled:opacity-60"
+                />
+              </div>
+
+            </div>
+
+            {openingTime && closingTime && (
+              <div className={`mt-3 rounded-xl border px-3 py-2.5 text-xs ${
+                openingTime < closingTime
+                  ? 'bg-blue-50 border-blue-100 text-blue-700'
+                  : 'bg-red-50 border-red-100 text-red-600'
+              }`}>
+                {openingTime < closingTime
+                  ? <>Visitors will see the park as open <strong>{fmt12(openingTime)} – {fmt12(closingTime)}</strong>. Schedules must start prep (call time) no earlier than {fmt12(openingTime)} and end by {fmt12(closingTime)}.</>
+                  : 'Opening time must be earlier than closing time.'}
+              </div>
+            )}
+
+            <p className="text-[11px] text-gray-400 mt-2">
+              If upcoming schedules fall outside the new hours, you'll be asked whether to cancel them (and notify people) or keep them.
+            </p>
+
+            <div className="flex items-center justify-between flex-wrap gap-3 pt-4 mt-3 border-t border-gray-100">
+
+              <div className="text-xs text-gray-400">
+                {hoursUpdatedAt &&
+                  `Last updated ${new Date(hoursUpdatedAt).toLocaleString('en-PH')}`}
+              </div>
+
+              <div className="flex items-center gap-2">
+
+                {hasHoursChanges && (
+                  <button
+                    type="button"
+                    onClick={() => { setOpeningTime(savedHours.openingTime); setClosingTime(savedHours.closingTime) }}
+                    disabled={hoursSaving}
+                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-600 hover:bg-gray-50 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Undo changes
+                  </button>
+                )}
+
+                <button
+                  onClick={handleSaveHours}
+                  disabled={hoursSaving || !hasHoursChanges}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {hoursSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Save changes
+                </button>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </AccordionSection>
+
+      )}
+
+      {hoursImpact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+            <h3 className="text-lg font-bold text-gray-900">Some schedules no longer fit</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              New hours {fmt12(openingTime)} – {fmt12(closingTime)} leave{' '}
+              <b>{hoursImpact.affectedSchedules}</b> upcoming schedule(s) outside the window, with{' '}
+              <b>{hoursImpact.affectedBookings}</b> active booking(s) and{' '}
+              <b>{hoursImpact.affectedAttendants}</b> attendant(s).
+            </p>
+
+            <ul className="mt-3 divide-y divide-gray-100 border border-gray-200 rounded-xl text-sm max-h-48 overflow-y-auto">
+              {hoursImpact.items.map(i => (
+                <li key={i.scheduleId} className="px-3 py-2 flex justify-between gap-3">
+                  <span className="text-gray-800">{i.rideName} · {i.date} · {fmt12(i.callTime)}–{fmt12(i.endTime)}</span>
+                  <span className="text-gray-500 whitespace-nowrap">{i.activeBookings} booking(s)</span>
+                </li>
+              ))}
+              {hoursImpact.hasMore && <li className="px-3 py-2 text-gray-400">…and more</li>}
+            </ul>
+
+            <div className="mt-4 space-y-2 text-sm">
+              <label className="flex gap-2 items-start cursor-pointer">
+                <input type="radio" checked={impactAction === 'Cancel'} onChange={() => setImpactAction('Cancel')} className="mt-1" />
+                <span><b>Cancel them and notify</b> — attendants and visitors get an in-app notification. Reopening a schedule restores its bookings.</span>
+              </label>
+              <label className="flex gap-2 items-start cursor-pointer">
+                <input type="radio" checked={impactAction === 'Keep'} onChange={() => setImpactAction('Keep')} className="mt-1" />
+                <span><b>Keep them as-is</b> — existing bookings stay, but no new bookings are accepted for them.</span>
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                onClick={() => setHoursImpact(null)}
+                disabled={hoursSaving}
+                className="px-4 py-2 border border-gray-300 text-gray-600 hover:bg-gray-50 rounded-xl text-sm font-semibold disabled:opacity-60"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => commitHours(impactAction)}
+                disabled={hoursSaving}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold disabled:opacity-60"
+              >
+                {hoursSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                {impactAction === 'Cancel' ? 'Save & cancel affected' : 'Save & keep'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

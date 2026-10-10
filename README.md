@@ -10,7 +10,7 @@ React + TypeScript + Vite frontend for **AmuseFlow** — a theme park attraction
 ## Portals
 
 - **Visitor** — browse attractions and attraction bundles, book schedules, track bookings on a dedicated My Bookings page, leave reviews, receive real-time notifications, and recover a forgotten password without an admin's help (verified via username + registered contact number, since there's no email on file)
-- **Admin** — manage attractions, bundles, schedules, bookings, users, validation settings (including Kid/Teen/Adult rider category presets), the Terms & Services shown on the Login page, generate ratings reports (PDF/Word export), and view system-wide activity logs and notifications
+- **Admin** — manage attractions, bundles, schedules, bookings, users, validation settings (including Kid/Teen/Adult rider category presets), the Terms & Services shown on the Login page, park operating hours (with a cancel/keep impact preview for schedules that no longer fit, and live "open now" badge on Login), generate ratings reports (PDF/Word export), export Bookings/Users/Logs to formatted Excel or CSV, and view system-wide activity logs and notifications
 - **Ride Attendant** — view assigned schedules, verify visitors, collect payment, and check guests in (bookings auto-complete once a schedule's window closes)
 
 ## Tech stack
@@ -20,6 +20,7 @@ React + TypeScript + Vite frontend for **AmuseFlow** — a theme park attraction
 - **Vite** for dev server and build
 - **Tailwind CSS** for styling, no component library
 - **react-hot-toast** for notifications, **lucide-react** for icons
+- **exceljs** for branded Excel exports
 - **jspdf** + **html2canvas** and **docx** for exporting Admin reports as PDF/Word
 
 ## Getting started

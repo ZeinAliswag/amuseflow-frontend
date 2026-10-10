@@ -17,13 +17,13 @@ import {
 import { reportApi } from '../../services/api'
 import type { RatingTrend, RatingTrendPoint, EntityRating } from '../../types'
 import { Card, Pagination } from '../../components/shared'
+import { PARK_NAME, PARK_ADDRESS, LOGO_SRC } from '../../components/shared/branding'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 
 // ── Letterhead constants — printable report header ──────────────
-const PARK_NAME = 'Glorious Fantasyland'
-const PARK_ADDRESS = 'GFL Complex, Sunset Boulevard, Dawo, Dapitan City, Zamboanga del Norte, 7101'
-const LOGO_SRC = '/images__6_-removebg-preview.png'
+// (constants now live in components/shared/branding.ts, shared with the
+// Excel/CSV exports so the letterhead never drifts between documents)
 
 type Scope = 'All' | 'Ride' | 'Promo'
 type SortField = '' | 'Name' | 'Rating'

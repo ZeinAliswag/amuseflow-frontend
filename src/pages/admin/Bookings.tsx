@@ -8,7 +8,11 @@ import {
 import type { Booking, BookingPromoItem, PaginationRequest } from '../../types'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
-import { exportToCsv } from '../../components/shared'
+import { exportReportCsv, exportReportExcel } from '../../components/shared/exportReport'
+import type { ReportColumn } from '../../components/shared/exportReport'
+import { ExportModal } from '../../components/shared/ExportModal'
+import type { ExportFormat } from '../../components/shared/ExportModal'
+import { useAuth } from '../../hooks/useAuth'
 
 // ✅ NEW — persists the admin's filter picks (status/payment/date range/page
 // size — deliberately not search text or the current page number, which
@@ -609,6 +613,8 @@ export default function AdminBookingsPage() {
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
   const [exporting, setExporting]       = useState(false)
+  const [exportOpen, setExportOpen]     = useState(false)
+  const { user } = useAuth()
 
   // ✅ NEW — bulk approve/reject: which Pending booking IDs on the current
   // page are checked, plus the confirm-modal target status ('Approved' or
@@ -777,7 +783,14 @@ export default function AdminBookingsPage() {
   // loaded page) at a large page size so the export reflects "everything
   // matching these filters," not just the 15/25/50 rows currently on
   // screen, then hands the rows to the shared exportToCsv helper.
-  const doExportCsv = async () => {
+  const exportFiltersSummary = [
+    statusFilter && `Status: ${statusFilter}`,
+    payFilter && `Payment: ${payFilter}`,
+    params.search && `Search: "${params.search}"`,
+    (dateFrom || dateTo) && `Date: ${dateFrom || '…'} to ${dateTo || '…'}`,
+  ].filter(Boolean).join('  ·  ') || 'None (all bookings)'
+
+  const doExport = async (format: ExportFormat) => {
     setExporting(true)
     try {
       // ✅ FIXED — was a single request with pageSize: 5000, but the backend
@@ -805,20 +818,28 @@ export default function AdminBookingsPage() {
         if (batch.length < pageSize || page >= totalPages) break
         page++
       }
-      if (rows.length === 0) { toast.error('No bookings match the current filters.'); return }
+      if (rows.length === 0) { setExportOpen(false); toast.error('No bookings match the current filters.'); return }
 
-      exportToCsv(`amuseflow-bookings-${toISO(new Date())}`, rows, [
-        { header: 'Booking Code', value: r => r.bookingCode },
-        { header: 'Visitor', value: r => r.visitorName },
-        { header: 'Username', value: r => r.visitorUsername },
-        { header: 'Contact Number', value: r => r.visitorContactNumber },
-        { header: 'Attraction / Bundle', value: r => r.promoId ? r.promoName : r.rideName },
-        { header: 'Schedule Date', value: r => r.promoId ? r.includedRides?.[0]?.scheduleDate : r.scheduleDate },
-        { header: 'Price', value: r => fmt(r.promoId ? r.paymentAmount : r.ridePrice) },
-        { header: 'Status', value: r => r.status },
-        { header: 'Payment Status', value: r => r.paymentStatus },
-      ])
-      toast.success(`Exported ${rows.length} booking(s).`)
+      const rowNo = new Map(rows.map((r, i) => [r, i + 1]))
+      const columns: ReportColumn<Booking>[] = [
+        { header: 'No.', width: 8, align: 'center', value: r => rowNo.get(r) },
+        { header: 'Booking Code', width: 24, value: r => r.bookingCode },
+        { header: 'Visitor', width: 24, value: r => r.visitorName },
+        { header: 'Username', width: 20, value: r => r.visitorUsername },
+        { header: 'Contact Number', width: 16, value: r => r.visitorContactNumber },
+        { header: 'Attraction / Bundle', width: 28, value: r => r.promoId ? r.promoName : r.rideName },
+        { header: 'Schedule Date', width: 16, align: 'center', value: r => r.promoId ? r.includedRides?.[0]?.scheduleDate : r.scheduleDate },
+        { header: 'Price', width: 14, align: 'right', numFmt: '"₱"#,##0.00',
+          value: r => Number(r.promoId ? r.paymentAmount : r.ridePrice) || 0 },
+        { header: 'Status', width: 14, align: 'center', value: r => r.status },
+        { header: 'Payment Status', width: 16, align: 'center', value: r => r.paymentStatus },
+      ]
+      const meta = { title: 'Bookings Report', filters: exportFiltersSummary, preparedBy: user?.fullName ?? 'Admin' }
+      const base = `amuseflow-bookings-${toISO(new Date())}`
+      if (format === 'xlsx') await exportReportExcel(base, rows, columns, meta)
+      else exportReportCsv(base, rows, columns, meta)
+      setExportOpen(false)
+      toast.success(`Exported ${rows.length} booking${rows.length === 1 ? '' : 's'} — downloaded successfully.`)
     } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to export bookings.')) }
     finally { setExporting(false) }
   }
@@ -877,12 +898,12 @@ export default function AdminBookingsPage() {
             onClick={() => setDateModalOpen(true)}
           />
 
-          {/* ✅ NEW — CSV export, re-fetches with current filters at a large
-              page size (not just the visible page) before downloading. */}
-          <button type="button" onClick={doExportCsv} disabled={exporting}
+          {/* Export — opens a confirm modal (format choice + summary) first;
+              the actual fetch-all-pages + download runs only on confirm. */}
+          <button type="button" onClick={() => setExportOpen(true)} disabled={exporting}
             className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors">
-            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-            Export CSV
+            <Download className="w-3.5 h-3.5" />
+            Export
           </button>
         </div>
 
@@ -1103,6 +1124,16 @@ export default function AdminBookingsPage() {
         )}
         </div>
       </div>
+
+      <ExportModal
+        open={exportOpen}
+        entityLabel="bookings"
+        filtersSummary={exportFiltersSummary}
+        fileBase={`amuseflow-bookings-${toISO(new Date())}`}
+        loading={exporting}
+        onConfirm={doExport}
+        onCancel={() => setExportOpen(false)}
+      />
 
       {/* Confirm Approve */}
       {approveTarget && (

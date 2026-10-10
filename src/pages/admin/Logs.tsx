@@ -8,7 +8,11 @@ import {
 import type { ActivityLog, PaginationRequest } from '../../types'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
-import { exportToCsv } from '../../components/shared'
+import { exportReportCsv, exportReportExcel } from '../../components/shared/exportReport'
+import type { ReportColumn } from '../../components/shared/exportReport'
+import { ExportModal } from '../../components/shared/ExportModal'
+import type { ExportFormat } from '../../components/shared/ExportModal'
+import { useAuth } from '../../hooks/useAuth'
 
 // ── Filter persistence — same localStorage pattern as admin/Bookings.tsx ──
 const FILTERS_KEY = 'af_admin_logs_filters'
@@ -603,6 +607,8 @@ export default function AdminLogsPage() {
   const [viewLog, setViewLog]       = useState<ActivityLog | null>(null)
   const [search, setSearch]         = useState('')
   const [exporting, setExporting]   = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const { user: me } = useAuth()
 
   useEffect(() => { fetchLogs() }, [params, moduleFilter, dateFrom, dateTo])
 
@@ -678,7 +684,15 @@ export default function AdminLogsPage() {
   // ✅ NEW — re-fetches with the current filters at a large page size (so the
   // export isn't limited to the current page), then downloads a CSV. Same
   // pattern as admin/Bookings.tsx's doExportCsv.
-  const doExportCsv = async () => {
+  const exportFiltersSummary = [
+    moduleFilter && `Module: ${moduleLabel(moduleFilter)}`,
+    `Role: ${roleFilter}`,
+    params.search && `Search: "${params.search}"`,
+    (dateFrom || dateTo) && `Date: ${dateFrom || '…'} to ${dateTo || '…'}`,
+    `Order: ${params.sortDirection === 'ASC' ? 'Oldest first' : 'Latest first'}`,
+  ].filter(Boolean).join('  ·  ')
+
+  const doExport = async (format: ExportFormat) => {
     setExporting(true)
     try {
       // ✅ FIXED — was a single request with pageSize: 5000, but the backend
@@ -713,16 +727,23 @@ export default function AdminLogsPage() {
       if (dateFrom) list = list.filter(l => new Date(l.createdAt) >= new Date(dateFrom))
       if (dateTo)   list = list.filter(l => new Date(l.createdAt) <= new Date(`${dateTo}T23:59:59`))
 
-      exportToCsv('activity-logs', list, [
-        { header: 'Log ID', value: l => l.id },
-        { header: 'Module', value: l => moduleLabel(l.module) },
-        { header: 'Action', value: l => l.action },
-        { header: 'Role', value: l => l.role ?? '' },
-        { header: 'Performed By', value: l => l.userName ?? 'System' },
-        { header: 'Details', value: l => l.details ? maskBookingCodesInText(l.details) : '' },
-        { header: 'Timestamp', value: l => new Date(l.createdAt).toLocaleString('en-PH') },
-      ])
-      toast.success(`Exported ${list.length} log entr${list.length === 1 ? 'y' : 'ies'}.`)
+      if (list.length === 0) { setExportOpen(false); toast.error('No activity logs match the current filters.'); return }
+
+      const columns: ReportColumn<ActivityLog>[] = [
+        { header: 'Log ID', width: 9, align: 'center', value: l => l.id },
+        { header: 'Timestamp', width: 22, value: l => new Date(l.createdAt).toLocaleString('en-PH') },
+        { header: 'Module', width: 14, align: 'center', value: l => moduleLabel(l.module) },
+        { header: 'Action', width: 26, value: l => l.action },
+        { header: 'Role', width: 16, align: 'center', value: l => l.role ?? '' },
+        { header: 'Performed By', width: 24, value: l => l.userName ?? 'System' },
+        { header: 'Details', width: 70, value: l => l.details ? maskBookingCodesInText(l.details) : '' },
+      ]
+      const meta = { title: 'Activity Logs Report', filters: exportFiltersSummary, preparedBy: me?.fullName ?? 'Admin' }
+      const base = `amuseflow-activity-logs-${toISO(new Date())}`
+      if (format === 'xlsx') await exportReportExcel(base, list, columns, meta)
+      else exportReportCsv(base, list, columns, meta)
+      setExportOpen(false)
+      toast.success(`Exported ${list.length} log entr${list.length === 1 ? 'y' : 'ies'} — downloaded successfully.`)
     } catch { toast.error('Failed to export activity logs.') }
     finally { setExporting(false) }
   }
@@ -774,11 +795,11 @@ export default function AdminLogsPage() {
           onClick={() => setDateModalOpen(true)}
         />
 
-        {/* Export CSV */}
-        <button type="button" onClick={doExportCsv} disabled={exporting}
+        {/* Export — confirm modal first (format choice + summary) */}
+        <button type="button" onClick={() => setExportOpen(true)} disabled={exporting}
           className="ml-auto flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
           <Download className="w-3.5 h-3.5 text-gray-400" />
-          {exporting ? 'Exporting…' : 'Export CSV'}
+          Export
         </button>
       </div>
 
@@ -909,6 +930,17 @@ export default function AdminLogsPage() {
       </div>
 
       {viewLog && <LogModal log={viewLog} onClose={() => setViewLog(null)} />}
+
+      <ExportModal
+        open={exportOpen}
+        entityLabel="activity logs"
+        filtersSummary={exportFiltersSummary}
+        fileBase={`amuseflow-activity-logs-${toISO(new Date())}`}
+        loading={exporting}
+        onConfirm={doExport}
+        onCancel={() => setExportOpen(false)}
+      />
+
 
       {dateModalOpen && (
         <DateRangeModal

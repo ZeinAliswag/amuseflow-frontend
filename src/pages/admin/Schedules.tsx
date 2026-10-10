@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import type { FormEvent } from 'react'
 import { Plus, Pencil, Calendar, Clock, Users, CheckCircle2, Trash2, Loader2, X, ChevronDown, Search, ChevronRight, ChevronLeft, UserCog, AlarmClock, Tag } from 'lucide-react'
 import type { Schedule, Ride, User } from '../../types'
-import api from '../../services/api'
+import api, { operatingHoursApi } from '../../services/api'
 import toast from 'react-hot-toast'
 
 const emptyForm = {
@@ -477,8 +477,13 @@ function SpinnerDigit({ value, onUp, onDown, label, disableUp, disableDown }: {
   )
 }
 
-function TimePicker({ value, onChange, accent = 'emerald', minTime }: {
+function TimePicker({ value, onChange, accent = 'emerald', minTime, maxTime }: {
   value: string; onChange: (v: string) => void; accent?: 'emerald' | 'red'; minTime?: string
+  // ✅ NEW — ceiling (the park's closing time). Together with minTime (today's
+  // clock and/or the park's opening time) this defines the only window of
+  // times that can be dialled in: nothing earlier than minTime or later than
+  // maxTime can be selected or even reached with the arrows.
+  maxTime?: string
 }) {
   const parse24 = (v: string) => {
     if (!v) return { hour12: 12, minute: 0, period: 'AM' as 'AM'|'PM' }
@@ -491,7 +496,10 @@ function TimePicker({ value, onChange, accent = 'emerald', minTime }: {
     return { hour12, minute: m, period }
   }
 
-  const { hour12, minute, period } = parse24(value)
+  // ✅ NEW — an empty picker used to show 12:00 AM, i.e. a time far outside
+  // the allowed window. It now starts at the earliest allowed time instead
+  // (the park's opening, or "now" when scheduling for today).
+  const { hour12, minute, period } = parse24(value || minTime || '')
 
   const to24 = (h12: number, m: number, p: 'AM'|'PM') => {
     let h = h12 % 12
@@ -504,13 +512,18 @@ function TimePicker({ value, onChange, accent = 'emerald', minTime }: {
   // so plain string comparison tells us if a candidate time is too early. ──
   const clampToMin = (h12: number, m: number, p: 'AM'|'PM') => {
     const candidate = to24(h12, m, p)
-    onChange(minTime && candidate < minTime ? minTime : candidate)
+    if (minTime && candidate < minTime) return onChange(minTime)
+    if (maxTime && candidate > maxTime) return onChange(maxTime)
+    onChange(candidate)
   }
 
   const atFloor = !!minTime && to24(hour12, minute, period) <= minTime
+  // Only meaningful once a value is chosen (an empty picker renders 12:00 AM).
+  const atCeiling = !!maxTime && to24(hour12, minute, period) >= maxTime
 
   const bumpHour = (delta: number) => {
     if (delta < 0 && atFloor) return
+    if (delta > 0 && atCeiling) return
     let h = hour12 + delta
     if (h > 12) h = 1
     if (h < 1) h = 12
@@ -518,6 +531,7 @@ function TimePicker({ value, onChange, accent = 'emerald', minTime }: {
   }
   const bumpMinute = (delta: number) => {
     if (delta < 0 && atFloor) return
+    if (delta > 0 && atCeiling) return
     let m = minute + delta
     if (m > 59) m = 0
     if (m < 0) m = 59
@@ -528,9 +542,11 @@ function TimePicker({ value, onChange, accent = 'emerald', minTime }: {
   // 4:32 PM, so AM is off the table) — disable the button instead of
   // letting it silently snap back to the floor.
   const periodDisabled = (p: 'AM'|'PM') => {
-    if (!minTime) return false
     const latestInPeriod = p === 'AM' ? '11:59' : '23:59'
-    return latestInPeriod < minTime
+    const earliestInPeriod = p === 'AM' ? '00:00' : '12:00'
+    if (minTime && latestInPeriod < minTime) return true     // whole half is before the window
+    if (maxTime && earliestInPeriod > maxTime) return true   // whole half is after the window
+    return false
   }
 
   const selectPeriod = (p: 'AM'|'PM') => {
@@ -547,12 +563,12 @@ function TimePicker({ value, onChange, accent = 'emerald', minTime }: {
       <Clock className={`w-4 h-4 flex-shrink-0 ${iconColor}`} />
 
       <SpinnerDigit value={String(hour12).padStart(2,'0')} label="hour"
-        onUp={() => bumpHour(1)} onDown={() => bumpHour(-1)} disableDown={atFloor} />
+        onUp={() => bumpHour(1)} onDown={() => bumpHour(-1)} disableUp={atCeiling} disableDown={atFloor} />
 
       <span className="text-gray-300 font-bold">:</span>
 
       <SpinnerDigit value={String(minute).padStart(2,'0')} label="minute"
-        onUp={() => bumpMinute(1)} onDown={() => bumpMinute(-1)} disableDown={atFloor} />
+        onUp={() => bumpMinute(1)} onDown={() => bumpMinute(-1)} disableUp={atCeiling} disableDown={atFloor} />
 
       <div className="flex flex-col gap-0.5 ml-1">
         {(['AM','PM'] as const).map(p => {
@@ -814,6 +830,45 @@ export default function AdminSchedulesPage() {
   const scheduleIsToday = form.scheduleDate === todayISO()
   const minTimeToday = scheduleIsToday ? nowHHMM() : undefined
 
+  // ✅ NEW — the park's operating hours (Settings → Operating Hours). Every
+  // time picker is limited to this window: nothing before opening or after
+  // closing can be selected, and submit re-checks it (the API enforces the
+  // same rule). Combined with "not earlier than right now" when scheduling
+  // for today — whichever floor is later wins.
+  const [parkHours, setParkHours] = useState<{ opening: string; closing: string } | null>(null)
+  useEffect(() => {
+    operatingHoursApi.get()
+      .then(res => {
+        const d = res.data?.data ?? res.data
+        if (d?.openingTime && d?.closingTime) setParkHours({ opening: d.openingTime, closing: d.closingTime })
+      })
+      .catch(() => { /* no restriction if hours can't be loaded; API still enforces */ })
+  }, [])
+  const floorTime = parkHours
+    ? (minTimeToday && minTimeToday > parkHours.opening ? minTimeToday : parkHours.opening)
+    : minTimeToday
+  const ceilingTime = parkHours?.closing
+  const parkHoursLabel = parkHours ? `${fmtTime(parkHours.opening)} – ${fmtTime(parkHours.closing)}` : ''
+
+  // Mirrors the API's operating-hours rule: the whole window (call time →
+  // end time) must sit inside opening–closing.
+  const withinParkHours = () => {
+    if (!parkHours) return true
+    if (form.callTime < parkHours.opening) {
+      toast.error(`Call time can't be before the park opens at ${fmtTime(parkHours.opening)}. Park hours: ${parkHoursLabel}.`)
+      return false
+    }
+    if (form.startTime < parkHours.opening || form.startTime > parkHours.closing) {
+      toast.error(`Start time must be within park hours (${parkHoursLabel}).`)
+      return false
+    }
+    if (form.endTime > parkHours.closing) {
+      toast.error(`End time can't be after the park closes at ${fmtTime(parkHours.closing)}. Park hours: ${parkHoursLabel}.`)
+      return false
+    }
+    return true
+  }
+
   // ✅ NEW — End time is auto-calculated from Start time + the selected
   // ride's own duration (e.g. Fantasy Carousel runs 5 minutes), instead of
   // admins having to work it out and type it in by hand. Re-runs whenever
@@ -975,6 +1030,7 @@ export default function AdminSchedulesPage() {
       }
       if (!form.callTime) { toast.error('Call time is required.'); return }
       if (form.callTime >= form.startTime) { toast.error('Call time must be earlier than the start time.'); return }
+      if (!withinParkHours()) return
       // If the range happens to start today, the shared times still can't
       // be behind the clock — same rule as single-date mode.
       if (rangeDates.includes(todayISO())) {
@@ -1027,6 +1083,7 @@ export default function AdminSchedulesPage() {
     // mirrors the backend's [TimeBefore] data annotation on the schedule DTOs.
     if (!form.callTime)     { toast.error('Call time is required.'); return }
     if (form.callTime >= form.startTime) { toast.error('Call time must be earlier than the start time.'); return }
+    if (!withinParkHours()) return
     // ── Mirrors the backend's [NotInPast] validation — if the schedule is
     // for today, none of the three times may already be behind the clock. ──
     if (form.scheduleDate === todayISO()) {
@@ -1502,9 +1559,14 @@ export default function AdminSchedulesPage() {
                   <AlarmClock className="w-3.5 h-3.5 text-red-500" />
                   Call time <span className="text-red-500">*</span>
                 </label>
-                <TimePicker value={form.callTime} onChange={v => setForm({...form, callTime: v})} accent="red" minTime={minTimeToday} />
+                <TimePicker value={form.callTime} onChange={v => setForm({...form, callTime: v})} accent="red" minTime={floorTime} maxTime={ceilingTime} />
                 <div className="text-[11px] text-gray-400 mt-1">
                   When the attendant must be ready — must be earlier than the start time below.
+                  {parkHours && (
+                    <span className="block text-blue-600 font-medium mt-0.5">
+                      Park hours: {parkHoursLabel} — times outside this window can't be selected.
+                    </span>
+                  )}
                   {scheduleIsToday && (
                     <span className="block text-amber-600 font-medium mt-0.5">
                       Scheduling for today — times before {fmtTime(minTimeToday)} are disabled.
@@ -1521,14 +1583,14 @@ export default function AdminSchedulesPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Start time <span className="text-red-500">*</span></label>
-                  <TimePicker value={form.startTime} onChange={v => setForm({...form, startTime: v})} minTime={minTimeToday} />
+                  <TimePicker value={form.startTime} onChange={v => setForm({...form, startTime: v})} minTime={floorTime} maxTime={ceilingTime} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">End time <span className="text-red-500">*</span></label>
                   {/* ✅ NEW — visually locked: End time is derived from Start
                       time + the ride's own duration, not typed in by hand. */}
                   <div className={selectedRideDuration ? 'pointer-events-none opacity-70' : ''}>
-                    <TimePicker value={form.endTime} onChange={v => setForm({...form, endTime: v})} minTime={minTimeToday} />
+                    <TimePicker value={form.endTime} onChange={v => setForm({...form, endTime: v})} minTime={floorTime} maxTime={ceilingTime} />
                   </div>
                   <div className="text-[11px] text-gray-400 mt-1">
                     {selectedRideDuration
@@ -1536,7 +1598,11 @@ export default function AdminSchedulesPage() {
                         ? <span className="text-red-500 font-medium">
                             {selectedRideDuration.name} runs {selectedRideDuration.durationMinutes}m — that would push the end time past midnight. Pick an earlier start time.
                           </span>
-                        : `Auto-calculated: ${selectedRideDuration.name} runs ${selectedRideDuration.durationMinutes}m from the start time above.`
+                        : parkHours && form.endTime && form.endTime > parkHours.closing
+                          ? <span className="text-red-500 font-medium">
+                              This ends after the park closes at {fmtTime(parkHours.closing)}. Pick an earlier start time.
+                            </span>
+                          : `Auto-calculated: ${selectedRideDuration.name} runs ${selectedRideDuration.durationMinutes}m from the start time above.`
                       : 'Select an attraction above to auto-calculate this from its duration.'}
                   </div>
                 </div>

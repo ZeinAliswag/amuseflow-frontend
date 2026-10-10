@@ -211,6 +211,30 @@ export const termsApi = {
     api.put('/api/termscontent', payload),
 }
 
+// ✅ NEW — the park's daily opening/closing time. Get is anonymous (shown on
+// the Login page); update is Admin-only (Settings → Operating Hours). Times
+// are "HH:mm" 24-hour strings. The Schedules page reads it to restrict which
+// times an Admin can pick, and the backend enforces the same window.
+export const operatingHoursApi = {
+  get: () =>
+    api.get('/api/operatinghours'),
+
+  // ✅ NEW — dry run: which upcoming schedules/bookings fall outside the proposed hours
+  preview: (payload: { openingTime: string; closingTime: string }) =>
+    api.post('/api/operatinghours/preview', {
+      openingTime: `${payload.openingTime}:00`,
+      closingTime: `${payload.closingTime}:00`,
+    }),
+
+  update: (payload: { openingTime: string; closingTime: string; affectedAction?: 'Cancel' | 'Keep' }) =>
+    api.put('/api/operatinghours', {
+      // TimeOnly JSON binding wants seconds
+      openingTime: `${payload.openingTime}:00`,
+      closingTime: `${payload.closingTime}:00`,
+      affectedAction: payload.affectedAction,
+    }),
+}
+
 // ── Reports (admin-only rating analytics) ────────────────────────
 // Backs the Admin "Reports" page — monthly average-rating trend, scoped to
 // every Attraction, every Attraction Bundle, everything combined, or one
